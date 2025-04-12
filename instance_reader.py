@@ -4,5 +4,8 @@ class InstanceReader:
     def __init__(self, path):
         self.path = path
 
-    def read_data(self):
+    def read_data_xslx(self):
         return pd.read_excel(self.path)
+
+    def read_data_csv(self):
+        return pd.read_csv(self.path)
