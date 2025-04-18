@@ -1,4 +1,50 @@
-## Repository Structure
+# Group Maintenance Problem
+
+This repository contains a solution to the Group Maintenance Problem, where components are grouped to optimize maintenance costs.
+
+## Project Structure
+
+The codebase is organized into modular components to support future development:
+
+- `component.py`: Component class representing machinery components to be maintained
+- `production_line.py`: ProductionLine class representing manufacturing lines
+- `group.py`: Group class representing a grouping of components for maintenance
+- `solution.py`: Solution class representing a complete maintenance solution
+- `instance_reader.py`: Utility class for reading data from CSV and Excel files
+
+### Mathematical and Analysis Modules
+
+- `cost_functions.py`: Core cost calculation functions (cost rate, phi, etc.)
+- `group_analysis.py`: Group analysis functions (economic profit, feasible intervals, etc.)
+- `visualizations.py`: Visualization functions for cost analysis and group economic profit
+
+### Main Execution
+
+- `solver.py`: Main execution script that ties together all modules
+
+## Data Files
+
+- `synthetic_maintenance_data_with_duration.csv`: Synthetic data for components
+
+## Usage
+
+To run the analysis:
+
+```bash
+python solver.py
+```
+
+## Visualization Examples
+
+The code supports multiple visualization types:
+
+1. Cost rate function for individual components
+2. Optimal execution time distribution
+3. Group economic profit analysis
+
+The visualizations help in understanding the economic impacts of different grouping strategies.
+
+## Domain Structure
 
 Automotive Plant contains a list with all production lines.
 Each production line contains a list with the components that belong to it.
@@ -6,8 +52,6 @@ Each production line contains a list with the components that belong to it.
 Component is considered the fundamental unit of our problem. Each component is accompanied by its costs (corrective and preventive), optimal execution times etc.
 
 Solution objects represents a list of groups. A group contains various components. Each group is accompanied by its cost, begin and ending time etc.
-
-
 
 
 ## What Assumptions I am doing now/ Considerations
