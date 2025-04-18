@@ -61,6 +61,7 @@ def visualize_optimal_execution_time_distribution(components, bins=30, show_cr_d
 def plot_group_economic_profit(example_group, get_production_line_by_id, find_optimal_group_time):
     import matplotlib.pyplot as plt
     import numpy as np
+    import mplcursors  # For interactive labels
     
     # Define a range of group execution times
     t_values = np.linspace(0, 365, 500)
@@ -73,25 +74,21 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
     group_time_opt, _ = find_optimal_group_time(example_group)
     profit_at_opt, details_at_opt = compute_group_economic_profit(example_group, group_time_opt, get_production_line_by_id)
 
-    # Create a figure with two subplots - main plot and a smaller one for component intervals
+    # Create a figure with two subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), height_ratios=[3, 1], gridspec_kw={'hspace': 0.3})
 
     # Main plot - Economic profit vs group execution time
-    ax1.plot(t_values, profits, label="Group Economic Profit", color='darkblue', linewidth=2)
+    main_line, = ax1.plot(t_values, profits, label="Group Economic Profit", color='darkblue', linewidth=2)
+    opt_line = ax1.axvline(x=group_time_opt, color='red', linestyle='--', linewidth=1.5, 
+                          label=f"Optimal Group Time: {group_time_opt:.2f}")
+    opt_point = ax1.plot(group_time_opt, profit_at_opt, 'ro', markersize=8, 
+                        label=f"Max Profit: {profit_at_opt:.2f}")[0]
 
-    # Mark the group optimal execution time with a vertical line
-    ax1.axvline(x=group_time_opt, color='red', linestyle='--', linewidth=1.5, 
-                label=f"Optimal Group Time: {group_time_opt:.2f}")
-    ax1.plot(group_time_opt, profit_at_opt, 'ro', markersize=8, 
-             label=f"Max Profit: {profit_at_opt:.2f}")
-
-    # Add key profit values with annotations
-    # Add points at specific times (optimal component times and a few others)
+    # Plot key points (component optimal times and some additional points)
     key_points = []
     for comp in example_group.components:
         key_points.append(comp.optimal_execution_time)
 
-    # Add a few more points to verify optimality
     additional_points = [
         group_time_opt - 30, 
         group_time_opt - 15,
@@ -100,26 +97,12 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
     ]
     key_points.extend(additional_points)
 
-    # Plot and annotate these key points
+    key_lines = []
     for point in key_points:
         if 0 <= point <= 365:
             profit_at_point, _ = compute_group_economic_profit(example_group, point, get_production_line_by_id)
-            ax1.plot(point, profit_at_point, 'ko', markersize=5)
-            
-            # Only annotate points with significant differences for clarity
-            if abs(profit_at_point - profit_at_opt) > 0.5 or point in [c.optimal_execution_time for c in example_group.components]:
-                if point in [c.optimal_execution_time for c in example_group.components]:
-                    comp_id = next(c.id for c in example_group.components if c.optimal_execution_time == point)
-                    label = f"Comp {int(comp_id)}: {profit_at_point:.2f}"
-                else:
-                    label = f"t={point:.0f}: {profit_at_point:.2f}"
-                    
-                ax1.annotate(label, 
-                            xy=(point, profit_at_point),
-                            xytext=(5, 5),
-                            textcoords='offset points',
-                            fontsize=8,
-                            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+            line = ax1.plot(point, profit_at_point, 'ko', markersize=5)[0]
+            key_lines.append(line)
 
     # Setup profit breakdown at optimal time
     breakdown_text = (f"At optimal time ({group_time_opt:.2f}):\n"
@@ -133,7 +116,7 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
             fontsize=9, verticalalignment='bottom')
 
     # Finalize main plot
-    ax1.set_title("Group Economic Profit vs Execution Time", fontsize=14, fontweight='bold')
+    ax1.set_title("Group Economic Profit vs Execution Time (Click on points for details)", fontsize=14, fontweight='bold')
     ax1.set_xlabel("Group Execution Time (days)", fontsize=12)
     ax1.set_ylabel("Economic Profit", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.7)
@@ -143,41 +126,59 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
     colors = plt.cm.tab10(np.linspace(0, 1, len(example_group.components)))
     component_y_positions = np.linspace(0.2, 0.8, len(example_group.components))
 
-    # Component intervals and optimal times
     for i, comp in enumerate(example_group.components):
         y_pos = component_y_positions[i]
         x_star = comp.optimal_execution_time
         interval = find_feasible_interval(comp, get_production_line_by_id)
         
-        # Component label
         ax2.text(-10, y_pos, f"Component {int(comp.id)}", va='center', ha='right', fontsize=10)
         
-        # Feasible interval as a colored bar
         if interval:
             ax2.plot([interval[0], interval[1]], [y_pos, y_pos], '-', 
                     linewidth=6, solid_capstyle='butt', alpha=0.7, color=colors[i],
                     label=f"Component {int(comp.id)} interval")
             
-            # Interval boundaries
             ax2.text(interval[0], y_pos-0.05, f"{interval[0]:.1f}", ha='center', va='top', fontsize=8)
             ax2.text(interval[1], y_pos-0.05, f"{interval[1]:.1f}", ha='center', va='top', fontsize=8)
         
-        # Component's optimal time
         ax2.plot(x_star, y_pos, 'ko', markersize=8)
         ax2.text(x_star, y_pos+0.05, f"x*={x_star:.1f}", ha='center', va='bottom', fontsize=9)
 
-    # Mark the group optimal time in the interval subplot
     ax2.axvline(x=group_time_opt, color='red', linestyle='--', linewidth=1.5)
     ax2.text(group_time_opt, 0.1, f"Group optimal: {group_time_opt:.1f}", 
              color='red', ha='center', va='bottom', fontsize=10, fontweight='bold')
 
-    # Finalize interval plot
     ax2.set_xlim([0, 365])
     ax2.set_ylim([0, 1])
     ax2.set_title("Component Feasible Intervals and Optimal Times", fontsize=12)
     ax2.set_xlabel("Time (days)", fontsize=10)
-    ax2.get_yaxis().set_visible(False)  # Hide y-axis as it's just for positioning
+    ax2.get_yaxis().set_visible(False)
     ax2.grid(True, axis='x', linestyle='--', alpha=0.5)
+
+    # Add interactive labels using mplcursors
+    cursor = mplcursors.cursor([main_line] + key_lines, hover=True)
+    
+    @cursor.connect("add")
+    def on_add(sel):
+        x, y = sel.target
+        if sel.artist == main_line:
+            # For points on the main line
+            sel.annotation.set_text(f"t = {x:.1f}\nProfit = {y:.2f}")
+        else:
+            # For key points
+            comp_id = None
+            for comp in example_group.components:
+                if abs(comp.optimal_execution_time - x) < 0.1:
+                    comp_id = int(comp.id)
+                    break
+            
+            if comp_id is not None:
+                sel.annotation.set_text(f"Component {comp_id}\nt = {x:.1f}\nProfit = {y:.2f}")
+            else:
+                sel.annotation.set_text(f"t = {x:.1f}\nProfit = {y:.2f}")
+        
+        sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+        sel.annotation.set_fontsize(10)
 
     plt.tight_layout()
     plt.savefig('group_maintenance_analysis.png', dpi=300, bbox_inches='tight')
