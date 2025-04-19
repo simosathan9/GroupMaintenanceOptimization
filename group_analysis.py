@@ -36,7 +36,7 @@ def compute_group_economic_profit(group, group_time, get_production_line_by_id):
         setup_savings += line.preventive_maintenance_set_up_cost * (sum(1 for c in group.components if c.production_line_id == line_id) - 1)
 
     # Calculate economic profit
-    economic_profit = setup_savings - increase_in_cost
+    economic_profit = setup_savings - increase_in_cost # Downtime cost savings are not included in the economic profit calculation
     return economic_profit, {
         "downtime_savings": downtime_savings,
         "setup_savings": setup_savings,
@@ -56,6 +56,7 @@ def find_optimal_group_time(group):
     result = minimize_scalar(lambda t: group_penalty_function(t, group), bounds=(0, 365), method='bounded')
     return result.x, result.fun
 
+# DISCUSS how the update of the optimal execution times will be done after the grouping
 def update_component_schedule(group, group_time):
     for component in group.components:
         delta_t = group_time - component.optimal_execution_time

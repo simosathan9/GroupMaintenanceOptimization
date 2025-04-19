@@ -15,7 +15,7 @@ from group_analysis import (
     find_feasible_interval
 )
 from visualizations import plot_group_economic_profit
-
+# Import moved to avoid circular import
 reader = InstanceReader("synthetic_maintenance_data_with_duration.csv")
 # for each row in the data, create a component object and add it to the components list
 components = []
@@ -76,20 +76,25 @@ for component in components:
     print(f"Component {component.id}:")
     print(f"  Optimal x*: {x_opt:.2f}")
     print(f"  Cost Rate (CR): {cr_opt:.4f}")
-    print(f"  Synthetic x*: {component.optimal_execution_time:.2f}")
-    print(f"  Synthetic CR: {component.long_term_cost_rate_synthetic:.4f}")
-    # print the execution schedule
-    print(f"  Execution schedule for planning horizon: {component.execution_schedule}")
-    print("  Δ x*: {:.2f}, Δ CR: {:.4f}".format(x_opt - component.optimal_execution_time_synthetic, cr_opt - component.long_term_cost_rate_synthetic))
     print()
+    
+# print correctly the optimal execution times range min and max
+
+min_optimal_execution_time = 1000
+max_optimal_execution_time = 0
+for component in components:
+    if component.optimal_execution_time < min_optimal_execution_time:
+        min_optimal_execution_time = component.optimal_execution_time
+    if component.optimal_execution_time > max_optimal_execution_time:
+        max_optimal_execution_time = component.optimal_execution_time
+print(f"Minimum optimal execution time: {min_optimal_execution_time:.2f}")
+print(f"Maximum optimal execution time: {max_optimal_execution_time:.2f}")
 
 example_group = Group(1)
 example_group.add_component(components[1])
 example_group.add_component(components[2])
 example_group.add_component(components[3])
-example_group.add_component(components[1050])
-example_group.add_component(components[400])
-example_group.add_component(components[401])
+example_group.add_component(components[4])
 
 # Find the optimal execution time for the group. Calculates the optimal execution time for the group based on the components in the group Dekker's paper
 group_time = find_optimal_group_time(example_group)[0]
@@ -108,7 +113,6 @@ for component in example_group.components:
     print(f"  Optimal execution time: {component.optimal_execution_time:.2f}")
     print(f"  Execution schedule before: {component.execution_schedule}")
     print(f"  Execution schedule after: {component.execution_schedule_2}")
-    # find its feasible interval
     interval = find_feasible_interval(component, get_production_line_by_id)
     if interval:
         print(f"  Feasible interval: ({interval[0]:.2f}, {interval[1]:.2f})")
@@ -118,3 +122,59 @@ print(f"\nGroup economic profit: {profit:.2f}")
 
 # Plot the group economic profit analysis
 plot_group_economic_profit(example_group, get_production_line_by_id, find_optimal_group_time)
+
+
+
+
+
+"""
+# Now run the greedy constructive heuristic
+print("\n" + "="*50)
+print("Running Greedy Constructive Heuristic")
+print("="*50)
+
+# Import here to avoid circular import
+from metaheuristics import constructive_heuristic
+
+# Create a new solution object for the heuristic
+greedy_solution = Solution()
+greedy_solution = constructive_heuristic(greedy_solution, get_production_line_by_id)
+
+# Calculate and print summary statistics
+total_groups = len(greedy_solution.solution)
+total_components = sum(len(group.components) for group in greedy_solution.solution)
+singleton_groups = sum(1 for group in greedy_solution.solution if len(group.components) == 1)
+grouped_components = total_components - singleton_groups
+
+print(f"\nGreedy heuristic results:")
+print(f"Total number of groups: {total_groups}")
+print(f"Total components processed: {total_components}")
+print(f"Number of singleton groups: {singleton_groups}")
+print(f"Number of components in multi-component groups: {grouped_components}")
+print(f"Percentage of components in groups: {(grouped_components/total_components)*100:.2f}%")
+
+# Calculate total solution cost
+cost_summary = greedy_solution.calculate_total_cost(get_production_line_by_id)
+
+print(f"\nSolution cost summary:")
+print(f"  Baseline cost (no grouping): {cost_summary['baseline_cost']:.2f}")
+print(f"  Total economic profit from grouping: {cost_summary['total_profit']:.2f}")
+print(f"  Total setup savings: {cost_summary['total_setup_savings']:.2f}")
+print(f"  Total increased corrective maintenance cost: {cost_summary['total_increased_cost']:.2f}")
+print(f"  Final solution cost: {cost_summary['total_cost']:.2f}")
+print(f"  Cost reduction: {(1 - cost_summary['total_cost']/cost_summary['baseline_cost'])*100:.2f}%")
+
+# Print details for the largest groups (e.g., all groups)
+print("\nLargest groups:")
+sorted_groups = sorted(greedy_solution.solution, key=lambda g: len(g.components), reverse=True)
+for i, group in enumerate(sorted_groups):
+    if len(group.components) > 1:
+        group_time = find_optimal_group_time(group)[0]
+        profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
+        print(f"\nGroup {group.id} - Components: {len(group.components)}, Profit: {profit:.2f}")
+        print(f"  Setup savings: {details['setup_savings']:.2f}")
+        print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
+        print(f"  Components: {[int(c.id) for c in group.components]}")
+        plot_group_economic_profit(group, get_production_line_by_id, find_optimal_group_time)
+        print(f"  Group execution time: {group_time:.2f}")
+"""

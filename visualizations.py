@@ -1,4 +1,5 @@
 # visualization.py
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -181,5 +182,9 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
         sel.annotation.set_fontsize(10)
 
     plt.tight_layout()
-    plt.savefig('group_maintenance_analysis.png', dpi=300, bbox_inches='tight')
+    random.seed(42)
+    id = random.randint(0, 100000)
+    #plt.savefig('group_maintenance_analysis.png', dpi=300, bbox_inches='tight')
+    # save the figure as group_maintenance_analysis_{i}.png
+    plt.savefig(f'group_maintenance_analysis_{id}.png', dpi=300, bbox_inches='tight')
     plt.show()
