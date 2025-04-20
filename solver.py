@@ -8,13 +8,16 @@ import numpy as np
 
 # Import from reorganized modules
 from cost_functions import compute_optimal_x
+from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty
+# Import group_analysis functions to avoid circular import
 from group_analysis import (
     compute_group_economic_profit, 
     find_optimal_group_time, 
     update_component_schedule,
-    find_feasible_interval
+    find_feasible_interval,
+    find_non_intersecting_pairs,
+    compute_grouping_structure_cost,
 )
-from visualizations import plot_group_economic_profit
 # Import moved to avoid circular import
 reader = InstanceReader("synthetic_maintenance_data_with_duration.csv")
 # for each row in the data, create a component object and add it to the components list
@@ -91,10 +94,8 @@ print(f"Minimum optimal execution time: {min_optimal_execution_time:.2f}")
 print(f"Maximum optimal execution time: {max_optimal_execution_time:.2f}")
 
 example_group = Group(1)
-example_group.add_component(components[1])
-example_group.add_component(components[2])
-example_group.add_component(components[3])
 example_group.add_component(components[4])
+example_group.add_component(components[752])
 
 # Find the optimal execution time for the group. Calculates the optimal execution time for the group based on the components in the group Dekker's paper
 group_time = find_optimal_group_time(example_group)[0]
@@ -122,7 +123,8 @@ print(f"\nGroup economic profit: {profit:.2f}")
 
 # Plot the group economic profit analysis
 plot_group_economic_profit(example_group, get_production_line_by_id, find_optimal_group_time)
-
+# Plot the feasible interval penalty function
+plot_feasible_interval_penalty(components[5], get_production_line_by_id)
 
 
 
@@ -168,13 +170,18 @@ print(f"  Cost reduction: {(1 - cost_summary['total_cost']/cost_summary['baselin
 print("\nLargest groups:")
 sorted_groups = sorted(greedy_solution.solution, key=lambda g: len(g.components), reverse=True)
 for i, group in enumerate(sorted_groups):
-    if len(group.components) > 1:
-        group_time = find_optimal_group_time(group)[0]
-        profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
-        print(f"\nGroup {group.id} - Components: {len(group.components)}, Profit: {profit:.2f}")
-        print(f"  Setup savings: {details['setup_savings']:.2f}")
-        print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
-        print(f"  Components: {[int(c.id) for c in group.components]}")
-        plot_group_economic_profit(group, get_production_line_by_id, find_optimal_group_time)
-        print(f"  Group execution time: {group_time:.2f}")
+    group_time = find_optimal_group_time(group)[0]
+    update_component_schedule(group, group_time)
+    update_non_group_component_schedules(group, components, get_production_line_by_id)
+    profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
+    print(f"\nGroup {group.id} - Components: {len(group.components)}, Profit: {profit:.2f}")
+    print(f"  Setup savings: {details['setup_savings']:.2f}")
+    print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
+    print(f"  Components: {[int(c.id) for c in group.components]}")
+    #plot_group_economic_profit(group, get_production_line_by_id, find_optimal_group_time)
+    print(f"  Group execution time: {group_time:.2f}")
+        
+#print the total cost of the grouping structure
+cost = compute_grouping_structure_cost(greedy_solution.solution, get_production_line_by_id, 365)
+print(f"\nTotal cost of the grouping structure: {cost:.2f}")
 """

@@ -6,6 +6,7 @@ class Group:
         self.group_begin_time = 0 # Time when the group begins
         self.group_end_time = 0 # Time when the group ends
         self.group_total_downtime = 0 # Total maintenance duration of the group
+        self.economic_profit = 0
         
     def add_component(self, component):
         self.components.append(component)

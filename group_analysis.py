@@ -43,6 +43,7 @@ def compute_group_economic_profit(group, group_time, get_production_line_by_id):
         "increased_CM_cost": increase_in_cost
     }
 
+# This function is used to calculate the penalty for a group of components. The penalty minimization helps find the group's optimal execution time
 def group_penalty_function(t, group):
     penalty = 0
     for comp in group.components:
@@ -67,6 +68,9 @@ def update_component_schedule(group, group_time):
 
         component.execution_schedule_2 = new_schedule
 
+#def update_optimal_execution_times_outside_group(components, group): (MUST BE IMPLEMENTED DISCUSS HOW IT HAS TO BE DONE)
+
+# This function finds for a given component the feasible interval within which the penalty for shifting away from the optimal execution time does not exceed the setup cost of the production line
 def find_feasible_interval(component, get_production_line_by_id):
     production_line = get_production_line_by_id(component.production_line_id)
     S = production_line.preventive_maintenance_set_up_cost
@@ -105,3 +109,25 @@ def find_non_intersecting_pairs(components, find_feasible_interval, get_producti
                 if interval_i[1] < interval_j[0] or interval_j[1] < interval_i[0]:
                     non_intersecting_pairs.append((components[i], components[j]))
     return non_intersecting_pairs
+
+def compute_grouping_structure_cost(groups, get_production_line_fn, d_PH):
+    # Step 1: Calculate the total individual cost
+    total_individual_cost = 0
+    all_components = []
+    for group in groups:
+        all_components.extend(group.components)
+    
+    total_individual_cost = d_PH * sum(comp.long_term_cost_rate for comp in all_components)
+
+    # Step 2: Calculate total group economic profit
+    total_economic_profit = 0
+    for group in groups:
+        # Compute optimal time for this group
+        group_time = find_optimal_group_time(group)[0]
+        profit, _ = compute_group_economic_profit(group, group_time, get_production_line_fn)
+        total_economic_profit += profit
+
+    # Step 3: Calculate grouped structure cost
+    grouped_structure_cost = total_individual_cost - total_economic_profit
+
+    return grouped_structure_cost

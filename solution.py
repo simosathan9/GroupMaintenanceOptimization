@@ -5,6 +5,9 @@ class Solution:
         self.total_time = 0 # Total time of the solution
         self.total_downtime = 0
         self.total_downtime_cost = 0
+        
+    def add_group(self, group):
+        self.solution.append(group)
     
     def calculate_total_cost(self, get_production_line_by_id):
         """

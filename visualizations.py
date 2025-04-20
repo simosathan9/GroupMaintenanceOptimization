@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from cost_functions import cost_rate, compute_optimal_x
+from cost_functions import cost_rate, compute_optimal_x, penalty_function
 from group_analysis import compute_group_economic_profit, find_feasible_interval
 
 def plot_cost_rate_function(cp, cc, mtbf, lambd, d, synthetic_x=None, synthetic_cr=None, component_id=None):
@@ -58,6 +58,94 @@ def visualize_optimal_execution_time_distribution(components, bins=30, show_cr_d
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+def plot_feasible_interval_penalty(component, get_production_line_by_id):
+    """
+    Visualizes how maintenance outside the feasible interval is not cost effective.
+    Shows the penalty cost for deviating from optimal time and the setup cost threshold.
+    """
+    x_star = component.optimal_execution_time
+    production_line = get_production_line_by_id(component.production_line_id)
+    setup_cost = production_line.preventive_maintenance_set_up_cost
+    
+    # Calculate feasible interval
+    interval = find_feasible_interval(component, get_production_line_by_id)
+    if interval is None:
+        print(f"Component {component.id} has no feasible interval for grouping")
+        return
+    
+    interval_min, interval_max = interval
+    
+    # Create a range of delta values around the optimal point
+    x_vals = np.linspace(max(0, x_star - 100), min(365, x_star + 100), 500)
+    delta_vals = [x - x_star for x in x_vals]
+    
+    # Calculate penalty for each deviation
+    penalty_vals = [penalty_function(delta, component) for delta in delta_vals]
+    
+    # Plot
+    plt.figure(figsize=(12, 8))
+    
+    # Main plot - penalty function
+    plt.plot(x_vals, penalty_vals, 'b-', linewidth=2.5, label='Penalty Cost')
+    plt.axhline(y=setup_cost, color='red', linestyle='--', linewidth=2, 
+               label=f'Setup Cost Threshold ({setup_cost:.2f})')
+    
+    # Mark the optimal time
+    plt.axvline(x=x_star, color='green', linestyle='-', linewidth=2,
+               label=f'Optimal Time x* ({x_star:.2f})')
+    
+    # Mark the feasible interval
+    plt.axvspan(interval_min, interval_max, alpha=0.2, color='green', 
+               label=f'Feasible Interval [{interval_min:.2f}, {interval_max:.2f}]')
+    
+    # Add points where penalty equals setup cost
+    plt.plot([interval_min, interval_max], [setup_cost, setup_cost], 'ro', markersize=8)
+    
+    # Add a region showing unprofitable maintenance times
+    plt.fill_between(x_vals, penalty_vals, setup_cost, 
+                    where=(np.array(penalty_vals) > setup_cost),
+                    color='red', alpha=0.3, interpolate=True,
+                    label='Unprofitable Region (Penalty > Setup Cost)')
+    
+    # Annotations
+    plt.annotate(f"Δt⁻ = {interval_min - x_star:.2f}", 
+                xy=(interval_min, setup_cost), 
+                xytext=(interval_min - 20, setup_cost + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5),
+                fontsize=10)
+    
+    plt.annotate(f"Δt⁺ = {interval_max - x_star:.2f}", 
+                xy=(interval_max, setup_cost), 
+                xytext=(interval_max + 20, setup_cost + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5),
+                fontsize=10)
+    
+    # Add title and labels
+    plt.title(f"Penalty Cost vs. Maintenance Time - Component {component.id}", fontsize=14, fontweight='bold')
+    plt.xlabel("Maintenance Time (days)", fontsize=12)
+    plt.ylabel("Penalty Cost", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Add explanatory text
+    explanation = (
+        f"• Optimal time (x*): {x_star:.2f} days\n"
+        f"• Feasible interval: [{interval_min:.2f}, {interval_max:.2f}] days\n"
+        f"• Setup cost: {setup_cost:.2f}\n"
+        f"• Outside the feasible interval, the penalty cost exceeds the setup cost savings\n"
+        f"• Maintenance is only economically beneficial within the green region"
+    )
+    
+    plt.figtext(0.15, 0.02, explanation, fontsize=10, 
+               bbox=dict(facecolor='lightyellow', alpha=0.8, boxstyle='round,pad=0.5'))
+    
+    plt.legend(loc='upper right', fontsize=10)
+    plt.tight_layout(rect=[0, 0.08, 1, 0.98])  # Adjust layout to make room for text
+    
+    random.seed(42)
+    id = random.randint(0, 100000)
+    plt.savefig(f'feasible_interval_verification_{id}.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
 def plot_group_economic_profit(example_group, get_production_line_by_id, find_optimal_group_time):
     import matplotlib.pyplot as plt

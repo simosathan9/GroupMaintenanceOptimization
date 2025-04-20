@@ -102,6 +102,7 @@ def constructive_heuristic(solution, get_production_line_by_id):
         
         # Add the group to the solution
         solution.solution.append(current_group)
+        current_group.group_total_downtime = sum(comp.preventive_maintenance_duration for comp in current_group.components)
         group_id += 1
     
     # Calculate total cost for the solution

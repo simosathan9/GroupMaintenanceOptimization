@@ -62,5 +62,7 @@ Solution objects represents a list of groups. A group contains various component
 * In my code I have identified non intersecting intervals that lead to economic profit but I observe that the interval boundaries are really close. Not sure
 if it has to do with my code/calculations are it is just numerically feasible
 * CONSIDERATIONS: Let's say that some components are grouped and the downtime is 10 units of time. How will the optimal execution times for components outside the group that share the same production line with a grouped component will be shifted ? Their deterioration is supposed to stop when the production line is down. How exactly should i update ? 
+* Should I group PM actions or components ? What I mean is that if a component has an x*=50 then has to be maintained at 50,100,150,200 etc. Is the grouping for each component happening only once based on its optimal execution time ? Or every PM action has to be grouped ? That said a component might be grouped at time t_1 with different ones that will be grouped at time t_2. If the PM actions are grouped then the update of the execution times probably follows the rule set in equation 13.
+* Discuss which penalty must be used to calculate the feasible interval for each component.
 
 * Use this to author the BSc thesis https://chatgpt.com/c/68021bfc-1768-8000-b0af-14aa9d9e8c04
