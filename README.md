@@ -65,4 +65,6 @@ if it has to do with my code/calculations are it is just numerically feasible
 * Should I group PM actions or components ? What I mean is that if a component has an x*=50 then has to be maintained at 50,100,150,200 etc. Is the grouping for each component happening only once based on its optimal execution time ? Or every PM action has to be grouped ? That said a component might be grouped at time t_1 with different ones that will be grouped at time t_2. If the PM actions are grouped then the update of the execution times probably follows the rule set in equation 13.
 * Discuss which penalty must be used to calculate the feasible interval for each component.
 
+* PM duration for a group is calculated by executing components of the same production line in parallel — taking the maximum PM duration per line. Lines are handled sequentially, so the total group duration is the sum of these per-line maxima.
+
 * Use this to author the BSc thesis https://chatgpt.com/c/68021bfc-1768-8000-b0af-14aa9d9e8c04

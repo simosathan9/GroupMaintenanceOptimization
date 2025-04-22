@@ -7,36 +7,41 @@ def compute_group_economic_profit(group, group_time, get_production_line_by_id):
     increase_in_cost = 0
     production_line_ids = set()
 
-    # Determine group-wide duration (max component PM duration)
-    max_duration = sum(comp.preventive_maintenance_duration for comp in group.components)
-
+    # --- CM Cost Increase Calculation ---
     for component in group.components:
-        line = component.production_line_id
-        production_line_ids.add(line)
+        production_line_ids.add(component.production_line_id)
 
-        # Δt: how far from x* is the new execution time
         delta_t = abs(group_time - component.optimal_execution_time)
-        delta_d = abs(max_duration - component.preventive_maintenance_duration)
-
         cc = component.corrective_maintenance_cost
         mtbf = component.mean_time_between_failures
         lambd = component.lamda_efr
         x_star = component.optimal_execution_time
 
-        # R_G part: Increase in expected CM cost due to shift
         phi_plus = compute_phi_raw(cc, mtbf, lambd, x_star + delta_t)
-        phi_minus = compute_phi_raw(cc, mtbf, lambd, x_star - delta_t - delta_d)
+        phi_minus = compute_phi_raw(cc, mtbf, lambd, x_star - delta_t)
         phi_star = compute_phi_raw(cc, mtbf, lambd, x_star)
 
-        increase_in_cost += phi_plus + phi_minus - 2 * phi_star
+        increase_in_cost += (phi_plus + phi_minus - 2 * phi_star)
 
-    # Setup savings: only one setup per line
+    # --- Setup Savings: 1 setup per line ---
     for line_id in production_line_ids:
         line = get_production_line_by_id(line_id)
-        setup_savings += line.preventive_maintenance_set_up_cost * (sum(1 for c in group.components if c.production_line_id == line_id) - 1)
+        num_components = sum(1 for c in group.components if c.production_line_id == line_id)
+        setup_savings += line.preventive_maintenance_set_up_cost * (num_components - 1)
 
-    # Calculate economic profit
-    economic_profit = setup_savings - increase_in_cost # Downtime cost savings are not included in the economic profit calculation
+    # --- Downtime Cost Savings (Equation 15) ---
+    for line_id in production_line_ids:
+        components_on_line = [c for c in group.components if c.production_line_id == line_id]
+        line = get_production_line_by_id(line_id)
+
+        total_individual_duration = sum(c.preventive_maintenance_duration for c in components_on_line)
+        max_parallel_duration = max(c.preventive_maintenance_duration for c in components_on_line)
+
+        line_downtime_savings = line.downtime_cost_rate * (total_individual_duration - max_parallel_duration)
+        downtime_savings += line_downtime_savings
+
+    # --- Final Economic Profit ---
+    economic_profit = setup_savings + downtime_savings - increase_in_cost
     return economic_profit, {
         "downtime_savings": downtime_savings,
         "setup_savings": setup_savings,
@@ -81,7 +86,7 @@ def find_feasible_interval(component, get_production_line_by_id):
 
     # Search for Δt⁻ in the negative direction
     try:
-        sol_neg = root_scalar(root_eq, bracket=[-x_star + 0.01, 0], method='brentq')
+        sol_neg = root_scalar(root_eq, bracket=[-x_star + 0.01, 0], method='brentq') # Root scalar is a root-finding algorithm based on Bolzano's condition
         delta_t_minus = sol_neg.root if sol_neg.converged else None
     except:
         delta_t_minus = None
