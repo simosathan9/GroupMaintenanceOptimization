@@ -68,3 +68,20 @@ if it has to do with my code/calculations are it is just numerically feasible
 * PM duration for a group is calculated by executing components of the same production line in parallel — taking the maximum PM duration per line. Lines are handled sequentially, so the total group duration is the sum of these per-line maxima.
 
 * Use this to author the BSc thesis https://chatgpt.com/c/68021bfc-1768-8000-b0af-14aa9d9e8c04
+
+
+# Math Used
+## For individual optimal execution time
+Calculate equation (10) from the paper "Modelling and application of joint maintenance grouping and workload smoothing for an automotive plant (1).pdf" then calculated long term cost rate as stated in equation (11) of the same paper and found the Xij* for each component that minimizes its long term cost rate (cost_functions.py)
+
+## For optimal group time
+To find the optimal execution time of a group of components I minimize the equation (3) stated in the paper "A dynamic policy for grouping maintenance activities". Instead of using M though I use the Φ function that I have also used above (is this correct ??)
+
+## For economic profit
+To find the economic profit of a group I calculate equation 18 of paper "Modelling and application of joint maintenance grouping and workload smoothing for an automotive plant (1).pdf". I am not sure how should i calculate downtime per production line as well as the expected repair costs due to that shift(again the problem lies in the downtime cost calculation). Paper "Modelling and application of joint maintenance grouping and workload smoothing for an automotive plant (1).pdf" says that optimal execution time is determined bu maximising the economic profit of that group as described in paper "A dynamic policy for grouping maintenance activities". However "A dynamic policy for grouping maintenance activities" does not mention economic profit maximization, rather aims to minimize the cost described above. 
+
+## For feasible interval per component
+To find the feasible interval within which the maintenance of a component is cost-efficient i calculate what is described in page 8 of "A dynamic policy for grouping maintenance activities". However "A dynamic policy for grouping maintenance activities". 
+
+## For grouping structure cost
+To calculate the cost of a grouping structure I calculate equation (19) as stated in "Modelling and application of joint maintenance grouping and workload smoothing for an automotive plant (1).pdf".

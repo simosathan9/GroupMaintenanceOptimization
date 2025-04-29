@@ -13,3 +13,9 @@ class Group:
         #self.group_cost += component.preventive_maintenance_cost
         #self.group_begin_time = min(self.group_begin_time, component.preventive_maintenance_duration) if self.group_begin_time else component.preventive_maintenance_duration
         #self.group_end_time = max(self.group_end_time, component.preventive_maintenance_duration) if self.group_end_time else component.preventive_maintenance_duration
+    
+    def remove_component(self, component):
+        self.components.remove(component)
+        #self.group_cost -= component.preventive_maintenance_cost
+        #self.group_begin_time = min(self.group_begin_time, component.preventive_maintenance_duration) if self.group_begin_time else component.preventive_maintenance_duration
+        #self.group_end_time = max(self.group_end_time, component.preventive_maintenance_duration) if self.group_end_time else component.preventive_maintenance_duration

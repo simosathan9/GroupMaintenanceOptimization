@@ -19,7 +19,7 @@ from group_analysis import (
     compute_grouping_structure_cost,
 )
 # Import metaheuristic algorithms
-from metaheuristics import best_fit_bin_packing
+from constructive_heuristic import best_fit_bin_packing
 # Import moved to avoid circular import
 reader = InstanceReader("testing_dataset.csv")
 # for each row in the data, create a component object and add it to the components list
@@ -124,6 +124,12 @@ for component in example_group.components:
         print(f"  No feasible grouping interval found for component {int(component.id)}.")
 print(f"\nExample Group economic profit: {profit:.2f}")
 
+
+
+
+#""" --------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------
 # Now let's use the best-fit bin packing algorithm to create groups
 print("\n=== Best-Fit Bin Packing Solution (Minimizing Grouping Structure Cost) ===")
 
@@ -192,7 +198,49 @@ for group in sorted(multi_component_groups, key=lambda g: len(g.components), rev
 
 # Plot the feasible interval penalty function
 #plot_feasible_interval_penalty(components[5], get_production_line_by_id)
+#"""
+from local_search import local_search_scheme
 
+# Calculate and print the cost of the initial solution from bin packing
+initial_bin_packing_cost = compute_grouping_structure_cost(bin_packing_groups, get_production_line_by_id, planning_horizon)
+print(f"\nInitial bin packing solution cost: {initial_bin_packing_cost:.2f}")
 
+# Run the enhanced local search
+print("\n=== Running Enhanced Local Search ===")
+solution = local_search_scheme(
+    bin_packing_groups, 
+    get_production_line_by_id, 
+    planning_horizon,
+    max_iterations=20
+)
 
+# Calculate and print the cost of the final solution
+final_cost = compute_grouping_structure_cost(solution, get_production_line_by_id, planning_horizon)
+print(f"\nFinal solution cost after local search: {final_cost:.2f}")
+print(f"Improvement over bin packing: {initial_bin_packing_cost - final_cost:.2f} ({((initial_bin_packing_cost - final_cost) / initial_bin_packing_cost * 100):.2f}%)")
+print(f"Total improvement over individual components: {individual_cost - final_cost:.2f} ({((individual_cost - final_cost) / individual_cost * 100):.2f}%)")
 
+# Print the final solution
+print("\n=== Final Solution After Local Search===")
+for group in solution:
+    group_time = find_optimal_group_time(group)[0]
+    profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
+    
+    print(f"\nGroup {group.id} - Components: {len(group.components)}, Execution time: {group_time:.2f}, Profit: {profit:.2f}")
+    print(f"  Setup savings: {details['setup_savings']:.2f}")
+    print(f"  Downtime savings: {details['downtime_savings']:.2f}")
+    print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
+    print(f"  Components: {[int(c.id) for c in group.components]}")
+    #print(f"  Production lines: {sorted(set(c.production_line_id for c in group.components))}") production line id in numpy format
+    # print production line ids as int and not numpy format
+    print(f"  Production lines: {[int(c.production_line_id) for c in group.components]}")
+    
+    # Show feasible interval verification for the first few components (limited to avoid excessive output)
+    if len(group.components) <= 5:  # Only show details for small groups
+        print("  Feasible intervals:")
+        for component in group.components:
+            interval = find_feasible_interval(component, get_production_line_by_id)
+            if interval:
+                print(f"    Component {int(component.id)}: ({interval[0]:.2f}, {interval[1]:.2f}), Optimal: {component.optimal_execution_time:.2f}")
+            else:
+                print(f"    Component {int(component.id)}: No feasible interval found.")
