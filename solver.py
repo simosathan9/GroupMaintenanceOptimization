@@ -15,7 +15,6 @@ from group_analysis import (
     find_optimal_group_time, 
     update_component_schedule,
     find_feasible_interval,
-    find_non_intersecting_pairs,
     compute_grouping_structure_cost,
 )
 # Import metaheuristic algorithms
@@ -205,23 +204,71 @@ from local_search import local_search_scheme
 initial_bin_packing_cost = compute_grouping_structure_cost(bin_packing_groups, get_production_line_by_id, planning_horizon)
 print(f"\nInitial bin packing solution cost: {initial_bin_packing_cost:.2f}")
 
-# Run the enhanced local search
-print("\n=== Running Enhanced Local Search ===")
-solution = local_search_scheme(
-    bin_packing_groups, 
-    get_production_line_by_id, 
-    planning_horizon,
-    max_iterations=20
-)
+# Import metaheuristic approaches
+from local_search import local_search_scheme
+from alns import alns_scheme
 
-# Calculate and print the cost of the final solution
-final_cost = compute_grouping_structure_cost(solution, get_production_line_by_id, planning_horizon)
-print(f"\nFinal solution cost after local search: {final_cost:.2f}")
-print(f"Improvement over bin packing: {initial_bin_packing_cost - final_cost:.2f} ({((initial_bin_packing_cost - final_cost) / initial_bin_packing_cost * 100):.2f}%)")
-print(f"Total improvement over individual components: {individual_cost - final_cost:.2f} ({((individual_cost - final_cost) / individual_cost * 100):.2f}%)")
+# Choose which metaheuristic to run
+metaheuristic_approach = "both"  # Options: "local_search", "alns", "both"
+
+if metaheuristic_approach == "local_search" or metaheuristic_approach == "both":
+    # Run the enhanced local search
+    print("\n=== Running Enhanced Local Search ===")
+    local_search_solution = local_search_scheme(
+        bin_packing_groups, 
+        get_production_line_by_id, 
+        planning_horizon,
+        max_iterations=20
+    )
+    
+    # Calculate and print the cost of the local search solution
+    local_search_cost = compute_grouping_structure_cost(local_search_solution, get_production_line_by_id, planning_horizon)
+    print(f"\nFinal solution cost after local search: {local_search_cost:.2f}")
+    print(f"Improvement over bin packing: {initial_bin_packing_cost - local_search_cost:.2f} ({((initial_bin_packing_cost - local_search_cost) / initial_bin_packing_cost * 100):.2f}%)")
+    print(f"Total improvement over individual components: {individual_cost - local_search_cost:.2f} ({((individual_cost - local_search_cost) / individual_cost * 100):.2f}%)")
+    
+    # Set the final solution to be the local search solution
+    if metaheuristic_approach == "local_search":
+        solution = local_search_solution
+        final_cost = local_search_cost
+
+if metaheuristic_approach == "alns" or metaheuristic_approach == "both":
+    # Run the Adaptive Large Neighborhood Search
+    print("\n=== Running Adaptive Large Neighborhood Search ===")
+    alns_solution = alns_scheme(
+        bin_packing_groups,
+        get_production_line_by_id,
+        planning_horizon,
+        max_iterations=100,
+        non_improving_iterations=20,
+        initial_temperature=100,
+        cooling_rate=0.95
+    )
+    
+    # Calculate and print the cost of the ALNS solution
+    alns_cost = compute_grouping_structure_cost(alns_solution, get_production_line_by_id, planning_horizon)
+    print(f"\nFinal solution cost after ALNS: {alns_cost:.2f}")
+    print(f"Improvement over bin packing: {initial_bin_packing_cost - alns_cost:.2f} ({((initial_bin_packing_cost - alns_cost) / initial_bin_packing_cost * 100):.2f}%)")
+    print(f"Total improvement over individual components: {individual_cost - alns_cost:.2f} ({((individual_cost - alns_cost) / individual_cost * 100):.2f}%)")
+    
+    # Set the final solution to be the ALNS solution
+    if metaheuristic_approach == "alns":
+        solution = alns_solution
+        final_cost = alns_cost
+
+if metaheuristic_approach == "both":
+    # Compare the two approaches and choose the best
+    if alns_cost < local_search_cost:
+        solution = alns_solution
+        final_cost = alns_cost
+        print(f"\nALNS outperformed Local Search by {local_search_cost - alns_cost:.2f} ({((local_search_cost - alns_cost) / local_search_cost * 100):.2f}%)")
+    else:
+        solution = local_search_solution
+        final_cost = local_search_cost
+        print(f"\nLocal Search outperformed ALNS by {alns_cost - local_search_cost:.2f} ({((alns_cost - local_search_cost) / alns_cost * 100):.2f}%)")
 
 # Print the final solution
-print("\n=== Final Solution After Local Search===")
+print("\n=== Final Solution After Metaheuristic ===")
 for group in solution:
     group_time = find_optimal_group_time(group)[0]
     profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
