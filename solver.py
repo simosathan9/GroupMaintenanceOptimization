@@ -12,15 +12,14 @@ from visualizations import plot_group_economic_profit, plot_feasible_interval_pe
 # Import group_analysis functions to avoid circular import
 from group_analysis import (
     compute_group_economic_profit, 
-    find_optimal_group_time, 
-    update_component_schedule,
+    find_optimal_group_time,
     find_feasible_interval,
     compute_grouping_structure_cost,
 )
 # Import metaheuristic algorithms
 from constructive_heuristic import best_fit_bin_packing
 # Import moved to avoid circular import
-reader = InstanceReader("testing_dataset.csv")
+reader = InstanceReader("datasets/testing_dataset.csv")
 # for each row in the data, create a component object and add it to the components list
 components = []
 production_lines = []
@@ -32,13 +31,17 @@ data = reader.read_data_csv().rename(columns={
     'λ': 'Weibull_Parameter',
     'cp': 'Preventive_Specific_Cost',
     'cc': 'Corrective_Specific_Cost',
-    'PM_duration': 'Duration',
-    'x*': 'Optimal_Execution_Time',
-    'CR': 'Long_term_Cost_Rate',
+    'PM_duration': 'Duration'
 })
+production_lines = []
+production_line_map = {}
+
 for index, row in data.iterrows():
-    production_line = ProductionLine(row['Production Line'], 5, 3, 5)
-    production_lines.append(production_line)
+    line_id = row['Production Line']
+    if line_id not in production_line_map:
+        production_line = ProductionLine(line_id, 5, 3, 5)
+        production_line_map[line_id] = production_line
+        production_lines.append(production_line)
 
 def get_production_line_by_id(id):
     for production_line in production_lines:
@@ -46,17 +49,11 @@ def get_production_line_by_id(id):
             return production_line
     return None
 
-# It is necessary to have the production lines list in this file so that when set-up cost reduction occurs
-# due to a component being added to a group we can retrieve the production line to which the component belongs and that stores the set-up cost
-
 # In the same way we will calculate the downtime cost reduction as each production line is accompanied with its downtime cost rate
 maintenance_durations = data['Duration'].tolist()
-optimal_execution_times = data['Optimal_Execution_Time'].tolist()
 for index, row in data.iterrows():
-    component = Component(row['ID'], row['Duration'], row['Corrective_Specific_Cost'], row['Preventive_Specific_Cost'], get_production_line_by_id(row['Production Line']), row['Weibull_Parameter'], row['MTBF'], row['Optimal_Execution_Time'], row['Long_term_Cost_Rate'])
+    component = Component(row['ID'], row['Duration'], row['Corrective_Specific_Cost'], row['Preventive_Specific_Cost'], get_production_line_by_id(row['Production Line']), row['Weibull_Parameter'], row['MTBF'])
     components.append(component)
-    # Print the components
-    print(component.__str__())
 
 for component in components:
     cc = component.corrective_maintenance_cost # includes production line setup cost
@@ -68,22 +65,15 @@ for component in components:
     x_opt, cr_opt = compute_optimal_x(cp, cc, mtbf, lambd, d)
     component.optimal_execution_time = x_opt
     component.long_term_cost_rate = cr_opt
-    
-    # We will use the optimal execution time to calculate the exact times for the Planning Horizon
-    schedule = []
-    t = x_opt
-    while t <= 365:
-        schedule.append(round(t, 2))
-        t += x_opt  # Next execution after x_opt days
-    component.execution_schedule = schedule
+    component.feasible_interval = find_feasible_interval(component, get_production_line_by_id)
 
     print(f"Component {component.id}:")
     print(f"  Optimal x*: {x_opt:.2f}")
+    print(f"  Feasible interval: {component.feasible_interval[0]:.2f} - {component.feasible_interval[1]:.2f}")
     print(f"  Cost Rate (CR): {cr_opt:.4f}")
     print()
     
 # print correctly the optimal execution times range min and max
-
 min_optimal_execution_time = 1000
 max_optimal_execution_time = 0
 for component in components:
@@ -94,39 +84,7 @@ for component in components:
 print(f"Minimum optimal execution time: {min_optimal_execution_time:.2f}")
 print(f"Maximum optimal execution time: {max_optimal_execution_time:.2f}")
 
-# Example of a manually created group
-example_group = Group(1)
-example_group.add_component(components[4])
-example_group.add_component(components[52])
-
-# Find the optimal execution time for the group. Calculates the optimal execution time for the group based on the components in the group Dekker's paper
-group_time = find_optimal_group_time(example_group)[0]
-# As prof. Mourtos said the schedules that are updated are the ones of the other components outside of the group
-# Additionally components that will be grouped together will be maintained together always there will be no reevaluation in the future (DISCUSS IT with Phuc)
-update_component_schedule(example_group, group_time)
-
-# Calculate profit
-profit, details = compute_group_economic_profit(example_group, group_time, get_production_line_by_id) # Discuss what holds regarding total duration of group maintenance because in sequential maintenance there no downtime cost savings
-# With sequential the downtime cost is increased
-
-# Print each components in the group the optimal execution time and then the group's optimal execution time
-print(f"\nExample Group execution time: {group_time:.2f}")
-for component in example_group.components:
-    print(f"\nComponent {int(component.id)}:")
-    print(f"  Optimal execution time: {component.optimal_execution_time:.2f}")
-    print(f"  Execution schedule before: {component.execution_schedule}")
-    print(f"  Execution schedule after: {component.execution_schedule_2}")
-    interval = find_feasible_interval(component, get_production_line_by_id)
-    if interval:
-        print(f"  Feasible interval: ({interval[0]:.2f}, {interval[1]:.2f})")
-    else:
-        print(f"  No feasible grouping interval found for component {int(component.id)}.")
-print(f"\nExample Group economic profit: {profit:.2f}")
-
-
-
-
-#""" --------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------------
 # Now let's use the best-fit bin packing algorithm to create groups
@@ -152,7 +110,7 @@ bin_packing_groups = best_fit_bin_packing(components, get_production_line_by_id,
 final_cost = compute_grouping_structure_cost(bin_packing_groups, get_production_line_by_id, planning_horizon)
 print(f"Final cost after grouping: {final_cost:.2f}")
 print(f"Cost reduction: {individual_cost - final_cost:.2f} ({((individual_cost - final_cost) / individual_cost * 100):.2f}%)")
-
+"""
 # Print the bin packing solution statistics
 print(f"\nTotal number of groups created: {len(bin_packing_groups)}")
 multi_component_groups = [g for g in bin_packing_groups if len(g.components) > 1]
@@ -197,7 +155,7 @@ for group in sorted(multi_component_groups, key=lambda g: len(g.components), rev
 
 # Plot the feasible interval penalty function
 #plot_feasible_interval_penalty(components[5], get_production_line_by_id)
-#"""
+#
 from local_search import local_search_scheme
 
 # Calculate and print the cost of the initial solution from bin packing
@@ -209,7 +167,7 @@ from local_search import local_search_scheme
 from alns import alns_scheme
 
 # Choose which metaheuristic to run
-metaheuristic_approach = "both"  # Options: "local_search", "alns", "both"
+metaheuristic_approach = "alns"  # Options: "local_search", "alns", "both"
 
 if metaheuristic_approach == "local_search" or metaheuristic_approach == "both":
     # Run the enhanced local search
@@ -291,3 +249,4 @@ for group in solution:
                 print(f"    Component {int(component.id)}: ({interval[0]:.2f}, {interval[1]:.2f}), Optimal: {component.optimal_execution_time:.2f}")
             else:
                 print(f"    Component {int(component.id)}: No feasible interval found.")
+"""

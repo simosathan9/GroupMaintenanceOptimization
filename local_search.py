@@ -4,7 +4,6 @@ from group_analysis import (
     find_non_intersecting_pairs,
     find_optimal_group_time,
     compute_group_economic_profit,
-    update_component_schedule,
     compute_grouping_structure_cost
 )
 

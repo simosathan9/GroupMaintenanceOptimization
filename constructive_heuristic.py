@@ -4,7 +4,6 @@ from group_analysis import (
     find_non_intersecting_pairs,
     find_optimal_group_time,
     compute_group_economic_profit,
-    update_component_schedule,
     compute_grouping_structure_cost
 )
 
@@ -98,7 +97,6 @@ def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon
             new_group = Group(group_id)
             new_group.add_component(component)
             group_time = component.optimal_execution_time
-            update_component_schedule(new_group, group_time)
             groups.append(new_group)
             group_id += 1
         else:

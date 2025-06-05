@@ -62,19 +62,6 @@ def find_optimal_group_time(group):
     result = minimize_scalar(lambda t: group_penalty_function(t, group), bounds=(0, 365), method='bounded')
     return result.x, result.fun
 
-# DISCUSS how the update of the optimal execution times will be done after the grouping
-def update_component_schedule(group, group_time):
-    for component in group.components:
-        delta_t = group_time - component.optimal_execution_time
-
-        # Shift all times by delta_t and round to 2 decimals
-        new_schedule = [round(float(t + delta_t), 2) for t in component.execution_schedule]
-        new_schedule = [t for t in new_schedule if t > 0]
-
-        component.execution_schedule_2 = new_schedule
-
-#def update_optimal_execution_times_outside_group(components, group): (MUST BE IMPLEMENTED DISCUSS HOW IT HAS TO BE DONE)
-
 # This function finds for a given component the feasible interval within which the penalty for shifting away from the optimal execution time does not exceed the setup cost of the production line
 def find_feasible_interval(component, get_production_line_by_id):
     production_line = get_production_line_by_id(component.production_line_id)
