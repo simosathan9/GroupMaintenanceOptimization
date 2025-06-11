@@ -276,3 +276,102 @@ def plot_group_economic_profit(example_group, get_production_line_by_id, find_op
     # save the figure as group_maintenance_analysis_{i}.png
     plt.savefig(f'group_maintenance_analysis_{id}.png', dpi=300, bbox_inches='tight')
     plt.show()
+
+def plot_component_planning_horizon(components, get_production_line_by_id, planning_horizon=365):
+    """
+    Plots a timeline visualization showing each component's planning horizon,
+    optimal execution time, and feasible interval for grouping decisions.
+    
+    Args:
+        components: List of Component objects
+        get_production_line_by_id: Function to get production line by ID
+        planning_horizon: Total planning horizon in days (default 365)
+    """
+    plt.figure(figsize=(14, max(8, len(components) * 0.5)))
+    
+    # Sort components by optimal execution time for better visualization
+    sorted_components = sorted(components, key=lambda c: c.optimal_execution_time)
+    
+    colors = plt.cm.Set3(np.linspace(0, 1, len(sorted_components)))
+    
+    for i, component in enumerate(sorted_components):
+        y_position = i
+        
+        # Plot the planning horizon as a background line
+        plt.plot([0, planning_horizon], [y_position, y_position], 
+                 color='lightgray', linewidth=2, alpha=0.5)
+        
+        # Get feasible interval
+        interval = find_feasible_interval(component, get_production_line_by_id)
+        
+        # Plot feasible interval as a thick colored line
+        if interval:
+            plt.plot([interval[0], interval[1]], [y_position, y_position], 
+                     color=colors[i], linewidth=6, alpha=0.7, solid_capstyle='round',
+                     label=f'Component {int(component.id)} feasible interval')
+            
+            # Add interval bounds text
+            plt.text(interval[0], y_position - 0.2, f'{interval[0]:.1f}', 
+                     ha='center', va='top', fontsize=8, color=colors[i])
+            plt.text(interval[1], y_position - 0.2, f'{interval[1]:.1f}', 
+                     ha='center', va='top', fontsize=8, color=colors[i])
+        
+        # Plot optimal execution time as a black diamond
+        plt.plot(component.optimal_execution_time, y_position, 'kD', 
+                 markersize=8, markerfacecolor='black', markeredgecolor='white', 
+                 markeredgewidth=1, zorder=5)
+        
+        # Add component ID and optimal time text
+        plt.text(-15, y_position, f'C{int(component.id)}', 
+                 ha='right', va='center', fontsize=10, fontweight='bold')
+        plt.text(component.optimal_execution_time, y_position + 0.25, 
+                 f'{component.optimal_execution_time:.1f}', 
+                 ha='center', va='bottom', fontsize=8, fontweight='bold')
+        
+        # Add cost rate information
+        plt.text(planning_horizon + 5, y_position, 
+                 f'CR: {component.long_term_cost_rate:.3f}', 
+                 ha='left', va='center', fontsize=8, color='gray')
+    
+    # Formatting
+    plt.xlim(-30, planning_horizon + 50)
+    plt.ylim(-0.5, len(sorted_components) - 0.5)
+    plt.xlabel('Time (days)', fontsize=12)
+    plt.ylabel('Components', fontsize=12)
+    plt.title('Component Planning Horizon: Optimal Execution Times and Feasible Intervals', 
+              fontsize=14, fontweight='bold')
+    
+    # Add grid for better readability
+    plt.grid(True, axis='x', linestyle='--', alpha=0.5)
+    
+    # Remove y-axis ticks since we have component labels
+    plt.yticks([])
+    
+    # Add legend explaining the symbols
+    legend_elements = [
+        plt.Line2D([0], [0], color='lightgray', linewidth=2, alpha=0.5, label='Planning Horizon'),
+        plt.Line2D([0], [0], color='blue', linewidth=6, alpha=0.7, label='Feasible Interval'),
+        plt.Line2D([0], [0], marker='D', color='w', markerfacecolor='black', 
+                   markersize=8, label='Optimal Execution Time', linestyle='None')
+    ]
+    plt.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+    
+    # Add explanatory text
+    explanation = (
+        "This visualization shows:\n"
+        "• Gray lines: Full planning horizon for each component\n"
+        "• Colored thick lines: Feasible intervals for grouping\n"
+        "• Black diamonds: Individual optimal execution times\n"
+        "• CR: Long-term cost rate for each component"
+    )
+    
+    plt.figtext(0.02, 0.02, explanation, fontsize=9, 
+               bbox=dict(facecolor='lightyellow', alpha=0.8, boxstyle='round,pad=0.5'))
+    
+    plt.tight_layout(rect=[0, 0.08, 1, 0.98])
+    
+    # Save the figure
+    random.seed(42)
+    file_id = random.randint(0, 100000)
+    plt.savefig(f'component_planning_horizon_{file_id}.png', dpi=300, bbox_inches='tight')
+    plt.show()

@@ -58,8 +58,21 @@ def group_penalty_function(t, group):
         penalty += (phi_shifted - phi_star - delta_t * comp.long_term_cost_rate)
     return penalty
 
-def find_optimal_group_time(group):
+def find_optimal_group_time(group, use_effective_time=False):
+    """
+    Find optimal execution time for a group.
+    If use_effective_time is True and group has effective_execution_time set,
+    use that instead of optimizing.
+    """
+    if use_effective_time and hasattr(group, 'effective_execution_time') and group.effective_execution_time > 0:
+        return group.effective_execution_time, group_penalty_function(group.effective_execution_time, group)
+    
     result = minimize_scalar(lambda t: group_penalty_function(t, group), bounds=(0, 365), method='bounded')
+    
+    # Store as planned execution time if not using effective time
+    if not use_effective_time:
+        group.planned_execution_time = result.x
+    
     return result.x, result.fun
 
 # This function finds for a given component the feasible interval within which the penalty for shifting away from the optimal execution time does not exceed the setup cost of the production line
@@ -94,8 +107,8 @@ def find_non_intersecting_pairs(components, find_feasible_interval, get_producti
     non_intersecting_pairs = []
     for i in range(len(components)):
         for j in range(i + 1, len(components)):
-            interval_i = find_feasible_interval(components[i], get_production_line_by_id)
-            interval_j = find_feasible_interval(components[j], get_production_line_by_id)
+            interval_i = components[i].feasible_interval 
+            interval_j = components[j].feasible_interval
             if interval_i and interval_j:
                 # Check if intervals do not intersect
                 if interval_i[1] < interval_j[0] or interval_j[1] < interval_i[0]:
@@ -120,6 +133,37 @@ def compute_grouping_structure_cost(groups, get_production_line_fn, d_PH):
         total_economic_profit += profit
 
     # Step 3: Calculate grouped structure cost
+    grouped_structure_cost = total_individual_cost - total_economic_profit
+
+    return grouped_structure_cost
+
+def compute_grouping_structure_cost_with_cascading(groups, get_production_line_fn, d_PH):
+    """
+    Compute grouping structure cost considering cascading delays.
+    This should be called AFTER the constructive heuristic completes.
+    """
+    # Step 1: Calculate the total individual cost
+    total_individual_cost = 0
+    all_components = []
+    for group in groups:
+        all_components.extend(group.components)
+    
+    total_individual_cost = d_PH * sum(comp.long_term_cost_rate for comp in all_components)
+
+    # Step 2: Apply cascading delays
+    from group import group_components_by_line, apply_cascading_delays
+    groups_by_line = group_components_by_line(groups)
+    apply_cascading_delays(groups_by_line, get_production_line_fn)
+
+    # Step 3: Calculate total group economic profit using effective execution times
+    total_economic_profit = 0
+    for group in groups:
+        group_time = group.effective_execution_time if hasattr(group, 'effective_execution_time') and group.effective_execution_time > 0 else find_optimal_group_time(group)[0]
+        profit, components_dict = compute_group_economic_profit(group, group_time, get_production_line_fn)
+        group.economic_profit = (profit, components_dict)
+        total_economic_profit += profit
+
+    # Step 4: Calculate grouped structure cost
     grouped_structure_cost = total_individual_cost - total_economic_profit
 
     return grouped_structure_cost

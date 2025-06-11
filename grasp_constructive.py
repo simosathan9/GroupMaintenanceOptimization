@@ -6,18 +6,17 @@ from group_analysis import (
     compute_group_economic_profit,
     compute_grouping_structure_cost
 )
+import random
 
-def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon=365):
+def grasp_constructive_heuristic(components, get_production_line_by_id, planning_horizon=365):
     """
-    Best-fit bin packing algorithm for grouping maintenance components.
-    This is a greedy heuristic that places each component into the group that results in 
-    the smallest increase in total grouping structure cost.
+    GRASP constructive heuristic that ensures groups contain only components 
+    from the same production line and always selects from exactly the top 3 best options.
     
     Args:
         components: List of components to be grouped
         get_production_line_by_id: Function to get production line by ID
         planning_horizon: Planning horizon in days (default 365)
-        max_components_per_group: Maximum number of components allowed per group (optional)
         
     Returns:
         List of Group objects representing the grouping solution
@@ -38,7 +37,6 @@ def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon
     valid_components = [comp for comp in components if comp in component_intervals]
     
     # Sort components by decreasing maintenance cost to prioritize more expensive components
-    #sorted_components = sorted(valid_components, key=lambda x: x.long_term_cost_rate, reverse=True)
     sorted_components = sorted(valid_components, key=lambda x: x.optimal_execution_time, reverse=True)
     
     groups = []
@@ -46,21 +44,31 @@ def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon
     
     # Process each component
     for component in sorted_components:
-        # Calculate the cost of adding this component to each existing group
-        best_group = None
-        current_cost_increase = float('inf')  # Initialize with infinity
+        # Store all valid placement options with their costs
+        placement_options = []
         
         # Calculate baseline cost - if the component were in its own group
         baseline_group = Group(-1)  # Temporary group just for calculation
         baseline_group.add_component(component)
         baseline_cost = compute_grouping_structure_cost([baseline_group], get_production_line_by_id, planning_horizon)
         
+        # Option 1: Create a new group
+        placement_options.append({
+            'type': 'new_group',
+            'group': None,
+            'cost_increase': baseline_cost
+        })
+        
         # Try each existing group
         for group in groups:    
+            # Check if component can be added to this group (same production line)
+            if not group.can_add_component(component):
+                continue
+                
             # Check if component can be added (no non-intersecting intervals)
             can_be_added = True
             for existing_comp in group.components:
-                if (component.id, existing_comp.id) in non_intersecting_set: # All components in the group must have intersecting intervals 1 to 1
+                if (component.id, existing_comp.id) in non_intersecting_set:
                     can_be_added = False
                     break
                     
@@ -69,6 +77,7 @@ def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon
                 
             # Make a temporary copy of the group with the new component
             temp_group = Group(group.id)
+            temp_group.production_line_id = group.production_line_id
             for c in group.components:
                 temp_group.add_component(c)
             temp_group.add_component(component)
@@ -83,25 +92,32 @@ def best_fit_bin_packing(components, get_production_line_by_id, planning_horizon
             old_group_cost = compute_grouping_structure_cost([group], get_production_line_by_id, planning_horizon)
             cost_increase = new_group_cost - old_group_cost
             
-            # If this is better than our current best option, update it
-            if cost_increase < current_cost_increase:
-                current_cost_increase = cost_increase
-                best_group = group
+            # Add this option to our list
+            placement_options.append({
+                'type': 'existing_group',
+                'group': group,
+                'cost_increase': cost_increase
+            })
         
-        # Check if creating a new group is better than adding to an existing group
-        new_group_cost_increase = baseline_cost
+        # Sort placement options by cost increase (best to worst)
+        placement_options.sort(key=lambda x: x['cost_increase'])
         
-        if best_group is None or new_group_cost_increase <= current_cost_increase:
+        # Select top 3 options (or all if fewer than 3 available)
+        top_options = placement_options[:min(3, len(placement_options))]
+        
+        # Randomly select one option from the top 3
+        selected_option = random.choice(top_options)
+        
+        # Execute the selected option
+        if selected_option['type'] == 'new_group':
             # Create a new group for this component
             new_group = Group(group_id)
             new_group.add_component(component)
-            group_time = component.optimal_execution_time
             groups.append(new_group)
             group_id += 1
         else:
-            # Add to the best existing group
-            best_group.add_component(component)
-            group_time, _ = find_optimal_group_time(best_group)
+            # Add to the selected existing group
+            selected_option['group'].add_component(component)
     
     # Final update of all groups' properties
     for group in groups:

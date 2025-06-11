@@ -1,3 +1,4 @@
+
 import random
 import numpy as np
 import math
@@ -23,7 +24,9 @@ class DestroyOperator:
     
     def update_weight(self, reaction_factor):
         if self.num_calls > 0:
-            self.weight = (1 - reaction_factor) * self.weight + reaction_factor * (self.score / self.num_calls)
+            avg_score = self.score / self.num_calls
+            self.weight = (1 - reaction_factor) * self.weight + reaction_factor * avg_score
+        # Keep current weight if no calls made
         
     def reset_score(self):
         self.score = 0
@@ -42,7 +45,9 @@ class RepairOperator:
     
     def update_weight(self, reaction_factor):
         if self.num_calls > 0:
-            self.weight = (1 - reaction_factor) * self.weight + reaction_factor * (self.score / self.num_calls)
+            avg_score = self.score / self.num_calls
+            self.weight = (1 - reaction_factor) * self.weight + reaction_factor * avg_score
+        # Keep current weight if no calls made
         
     def reset_score(self):
         self.score = 0
@@ -66,13 +71,17 @@ def random_removal(solution, level, get_production_line_by_id, planning_horizon)
     for group in solution:
         all_components.extend(group.components)
     
-    num_to_remove = max(1, int(len(all_components) * level))
+    if not all_components:
+        return [], []
+    
+    num_to_remove = max(1, min(len(all_components), int(len(all_components) * level)))
     components_to_remove = random.sample(all_components, num_to_remove)
     
     # Make a copy of the solution
     new_solution = []
     for group in solution:
         new_group = Group(group.id)
+        new_group.production_line_id = group.production_line_id  # Preserve line ID
         for component in group.components:
             if component not in components_to_remove:
                 new_group.add_component(component)
@@ -94,22 +103,34 @@ def worst_group_removal(solution, level, get_production_line_by_id, planning_hor
     Returns:
         Modified solution and list of removed components
     """
-    # Calculate profit for each group
+    # Calculate total components
+    all_components = []
+    for group in solution:
+        all_components.extend(group.components)
+    
+    if not all_components:
+        return [], []
+    
+    # Calculate profit for each group with more than one component
     group_profits = []
     for group in solution:
         if len(group.components) > 1:
-            group_time = find_optimal_group_time(group)[0]
-            profit, _ = compute_group_economic_profit(group, group_time, get_production_line_by_id)
-            group_profits.append((group, profit))
+            try:
+                group_time = find_optimal_group_time(group)[0]
+                profit, _ = compute_group_economic_profit(group, group_time, get_production_line_by_id)
+                group_profits.append((group, profit))
+            except (IndexError, ValueError):
+                # Handle case where group time calculation fails
+                group_profits.append((group, float('-inf')))
+    
+    # If no groups with multiple components, fall back to random removal
+    if not group_profits:
+        return random_removal(solution, level, get_production_line_by_id, planning_horizon)
     
     # Sort groups by profit (ascending)
     group_profits.sort(key=lambda x: x[1])
     
-    # Calculate number of components to remove
-    all_components = []
-    for group in solution:
-        all_components.extend(group.components)
-    num_to_remove = max(1, int(len(all_components) * level))
+    num_to_remove = max(1, min(len(all_components), int(len(all_components) * level)))
     
     # Select components from worst groups until we've removed enough
     components_to_remove = []
@@ -122,13 +143,15 @@ def worst_group_removal(solution, level, get_production_line_by_id, planning_hor
         
         # Select components to remove
         group_components = list(group.components)
-        chosen = random.sample(group_components, num_from_group)
-        components_to_remove.extend(chosen)
+        if num_from_group > 0:
+            chosen = random.sample(group_components, num_from_group)
+            components_to_remove.extend(chosen)
     
     # Make a copy of the solution without the removed components
     new_solution = []
     for group in solution:
         new_group = Group(group.id)
+        new_group.production_line_id = group.production_line_id  # Preserve line ID
         for component in group.components:
             if component not in components_to_remove:
                 new_group.add_component(component)
@@ -194,6 +217,7 @@ def related_removal(solution, level, get_production_line_by_id, planning_horizon
     new_solution = []
     for group in solution:
         new_group = Group(group.id)
+        new_group.production_line_id = group.production_line_id  # Preserve line ID
         for component in group.components:
             if component not in components_to_remove:
                 new_group.add_component(component)
@@ -215,11 +239,19 @@ def production_line_removal(solution, level, get_production_line_by_id, planning
     Returns:
         Modified solution and list of removed components
     """
+    # Calculate total components
+    all_components = []
+    for group in solution:
+        all_components.extend(group.components)
+    
+    if not all_components:
+        return [], []
+    
     # Identify all production lines in the solution
     production_lines = set()
     for group in solution:
-        for component in group.components:
-            production_lines.add(component.production_line_id)
+        if group.production_line_id is not None:
+            production_lines.add(group.production_line_id)
     
     # If there are no production lines, fall back to random removal
     if not production_lines:
@@ -231,15 +263,13 @@ def production_line_removal(solution, level, get_production_line_by_id, planning
     # Collect all components from the selected production line
     line_components = []
     for group in solution:
-        for component in group.components:
-            if component.production_line_id == target_line:
-                line_components.append(component)
+        if group.production_line_id == target_line:
+            line_components.extend(group.components)
+    
+    if not line_components:
+        return random_removal(solution, level, get_production_line_by_id, planning_horizon)
     
     # Calculate how many components to remove
-    all_components = []
-    for group in solution:
-        all_components.extend(group.components)
-    
     max_to_remove = min(len(line_components), int(len(all_components) * level))
     num_to_remove = max(1, max_to_remove)
     
@@ -250,6 +280,7 @@ def production_line_removal(solution, level, get_production_line_by_id, planning
     new_solution = []
     for group in solution:
         new_group = Group(group.id)
+        new_group.production_line_id = group.production_line_id  # Preserve line ID
         for component in group.components:
             if component not in components_to_remove:
                 new_group.add_component(component)
@@ -262,6 +293,7 @@ def production_line_removal(solution, level, get_production_line_by_id, planning
 def greedy_repair(solution, removed_components, get_production_line_by_id, planning_horizon):
     """
     Re-inserts components greedily, choosing the best group for each component.
+    Ensures components are only added to groups from the same production line.
     
     Args:
         solution: Current solution (list of groups)
@@ -274,7 +306,12 @@ def greedy_repair(solution, removed_components, get_production_line_by_id, plann
     """
     # Make sure solution is a list
     new_solution = list(solution)
-    next_group_id = max([group.id for group in solution], default=0) + 1
+    if not new_solution and not removed_components:
+        return new_solution
+        
+    # Generate unique group ID
+    existing_ids = {group.id for group in new_solution}
+    next_group_id = max(existing_ids, default=0) + 1
     
     # Calculate non-intersecting pairs for constraint checking
     all_components = []
@@ -282,24 +319,36 @@ def greedy_repair(solution, removed_components, get_production_line_by_id, plann
         all_components.extend(group.components)
     all_components.extend(removed_components)
     
+    if not all_components:
+        return new_solution
+    
     non_intersecting_pairs = find_non_intersecting_pairs(all_components, find_feasible_interval, get_production_line_by_id)
     non_intersecting_set = set()
     for comp1, comp2 in non_intersecting_pairs:
         non_intersecting_set.add((comp1.id, comp2.id))
         non_intersecting_set.add((comp2.id, comp1.id))
     
+    # Cache for group costs to avoid redundant calculations
+    group_cost_cache = {}
+    
     # Process each component
     for component in removed_components:
-        # Try adding to each existing group
+        # Try adding to each existing group from the same production line
         best_group = None
         best_cost_increase = float('inf')
         
         # Calculate baseline cost - if the component were in its own group
         baseline_group = Group(-1)  # Temporary group just for calculation
         baseline_group.add_component(component)
+        # Ensure group has valid timing before cost calculation
+        find_optimal_group_time(baseline_group)
         baseline_cost = compute_grouping_structure_cost([baseline_group], get_production_line_by_id, planning_horizon)
         
         for group in new_solution:
+            # Check if component can be added to this group (same production line)
+            if not group.can_add_component(component):
+                continue
+                
             # Check if component can be added (no non-intersecting intervals)
             can_be_added = True
             for existing_comp in group.components:
@@ -310,17 +359,27 @@ def greedy_repair(solution, removed_components, get_production_line_by_id, plann
             if not can_be_added:
                 continue
             
+            # Use cached cost or calculate it
+            group_key = tuple(sorted([c.id for c in group.components]))
+            if group_key not in group_cost_cache:
+                find_optimal_group_time(group)
+                group_cost_cache[group_key] = compute_grouping_structure_cost([group], get_production_line_by_id, planning_horizon)
+            old_group_cost = group_cost_cache[group_key]
+            
             # Make a temporary copy of the group with the new component
             temp_group = Group(group.id)
+            temp_group.production_line_id = group.production_line_id
             for c in group.components:
                 temp_group.add_component(c)
             temp_group.add_component(component)
             
+            # Ensure temp group has valid timing before cost calculation
+            find_optimal_group_time(temp_group)
+            
             # Calculate new cost of this group with the component added
             new_group_cost = compute_grouping_structure_cost([temp_group], get_production_line_by_id, planning_horizon)
             
-            # Calculate cost increase (new_group_cost - old_group_cost)
-            old_group_cost = compute_grouping_structure_cost([group], get_production_line_by_id, planning_horizon)
+            # Calculate cost increase
             cost_increase = new_group_cost - old_group_cost
             
             # If this is better than our current best option, update it
@@ -340,17 +399,18 @@ def greedy_repair(solution, removed_components, get_production_line_by_id, plann
         else:
             # Add to the best existing group
             best_group.add_component(component)
-            group_time, _ = find_optimal_group_time(best_group)
+            find_optimal_group_time(best_group)
     
     # Final update of all groups' properties
     for group in new_solution:
-        group_time, _ = find_optimal_group_time(group)
+        find_optimal_group_time(group)
     
     return new_solution
 
 def regret_repair(solution, removed_components, get_production_line_by_id, planning_horizon):
     """
     Re-inserts components based on a regret measure.
+    Ensures components are only added to groups from the same production line.
     
     Args:
         solution: Current solution (list of groups)
@@ -363,7 +423,12 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
     """
     # Make sure solution is a list
     new_solution = list(solution)
-    next_group_id = max([group.id for group in solution], default=0) + 1
+    if not new_solution and not removed_components:
+        return new_solution
+        
+    # Generate unique group ID
+    existing_ids = {group.id for group in new_solution}
+    next_group_id = max(existing_ids, default=0) + 1
     
     # Calculate non-intersecting pairs for constraint checking
     all_components = []
@@ -380,9 +445,13 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
     # Calculate costs for all possible insertions
     component_costs = []
     for component in removed_components:
-        # Check each existing group
+        # Check each existing group from the same production line
         group_costs = []
         for group in new_solution:
+            # Check if component can be added to this group (same production line)
+            if not group.can_add_component(component):
+                continue
+                
             # Check if component can be added (no non-intersecting intervals)
             can_be_added = True
             for existing_comp in group.components:
@@ -395,9 +464,14 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
             
             # Make a temporary copy of the group with the new component
             temp_group = Group(group.id)
+            temp_group.production_line_id = group.production_line_id
             for c in group.components:
                 temp_group.add_component(c)
             temp_group.add_component(component)
+            
+            # Ensure both groups have valid timing before cost calculation
+            find_optimal_group_time(temp_group)
+            find_optimal_group_time(group)
             
             # Calculate new cost of this group with the component added
             new_group_cost = compute_grouping_structure_cost([temp_group], get_production_line_by_id, planning_horizon)
@@ -411,6 +485,7 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
         # Calculate cost for new group
         baseline_group = Group(-1)  # Temporary group just for calculation
         baseline_group.add_component(component)
+        find_optimal_group_time(baseline_group)
         new_group_cost = compute_grouping_structure_cost([baseline_group], get_production_line_by_id, planning_horizon)
         
         # Sort costs and compute regret
@@ -435,6 +510,9 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
         valid_groups = []
         for group, cost in group_costs:
             # Verify the component can still be added (constraints might have changed)
+            if not group.can_add_component(component):
+                continue
+                
             can_be_added = True
             for existing_comp in group.components:
                 if (component.id, existing_comp.id) in non_intersecting_set:
@@ -450,7 +528,7 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
             
             # Add to the best group
             best_group.add_component(component)
-            group_time, _ = find_optimal_group_time(best_group)
+            find_optimal_group_time(best_group)
         else:
             # Create a new group
             new_group = Group(next_group_id)
@@ -460,13 +538,13 @@ def regret_repair(solution, removed_components, get_production_line_by_id, plann
     
     # Final update of all groups' properties
     for group in new_solution:
-        group_time, _ = find_optimal_group_time(group)
+        find_optimal_group_time(group)
     
     return new_solution
 
 def random_repair(solution, removed_components, get_production_line_by_id, planning_horizon):
     """
-    Re-inserts components randomly, respecting feasibility constraints.
+    Re-inserts components randomly, respecting feasibility and production line constraints.
     
     Args:
         solution: Current solution (list of groups)
@@ -479,7 +557,12 @@ def random_repair(solution, removed_components, get_production_line_by_id, plann
     """
     # Make sure solution is a list
     new_solution = list(solution)
-    next_group_id = max([group.id for group in solution], default=0) + 1
+    if not new_solution and not removed_components:
+        return new_solution
+        
+    # Generate unique group ID
+    existing_ids = {group.id for group in new_solution}
+    next_group_id = max(existing_ids, default=0) + 1
     
     # Calculate non-intersecting pairs for constraint checking
     all_components = []
@@ -498,9 +581,13 @@ def random_repair(solution, removed_components, get_production_line_by_id, plann
     
     # Process each component
     for component in removed_components:
-        # Get all valid groups
+        # Get all valid groups from the same production line
         valid_groups = []
         for group in new_solution:
+            # Check if component can be added to this group (same production line)
+            if not group.can_add_component(component):
+                continue
+                
             # Check if component can be added (no non-intersecting intervals)
             can_be_added = True
             for existing_comp in group.components:
@@ -532,6 +619,7 @@ def random_repair(solution, removed_components, get_production_line_by_id, plann
 def regret_k_repair(solution, removed_components, get_production_line_by_id, planning_horizon, k=3):
     """
     Re-inserts components based on a k-regret measure.
+    Ensures components are only added to groups from the same production line.
     
     Args:
         solution: Current solution (list of groups)
@@ -545,7 +633,12 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
     """
     # Make sure solution is a list
     new_solution = list(solution)
-    next_group_id = max([group.id for group in solution], default=0) + 1
+    if not new_solution and not removed_components:
+        return new_solution
+        
+    # Generate unique group ID
+    existing_ids = {group.id for group in new_solution}
+    next_group_id = max(existing_ids, default=0) + 1
     
     # Calculate non-intersecting pairs for constraint checking
     all_components = []
@@ -563,9 +656,13 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
         # Calculate costs for all possible insertions
         component_costs = []
         for component in removed_components:
-            # Check each existing group
+            # Check each existing group from the same production line
             group_costs = []
             for group in new_solution:
+                # Check if component can be added to this group (same production line)
+                if not group.can_add_component(component):
+                    continue
+                    
                 # Check if component can be added (no non-intersecting intervals)
                 can_be_added = True
                 for existing_comp in group.components:
@@ -578,6 +675,7 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
                 
                 # Make a temporary copy of the group with the new component
                 temp_group = Group(group.id)
+                temp_group.production_line_id = group.production_line_id
                 for c in group.components:
                     temp_group.add_component(c)
                 temp_group.add_component(component)
@@ -624,6 +722,9 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
         valid_groups = []
         for group, cost in group_costs:
             # Verify the component can still be added
+            if not group.can_add_component(component):
+                continue
+                
             can_be_added = True
             for existing_comp in group.components:
                 if (component.id, existing_comp.id) in non_intersecting_set:
@@ -639,7 +740,7 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
             
             # Add to the best group
             best_group.add_component(component)
-            group_time, _ = find_optimal_group_time(best_group)
+            find_optimal_group_time(best_group)
         else:
             # Create a new group
             new_group = Group(next_group_id)
@@ -651,21 +752,25 @@ def regret_k_repair(solution, removed_components, get_production_line_by_id, pla
 
 def clone_groups(groups):
     """
-    Clone groups without deep copying the components.
-    Keep the same component references (no deepcopy).
+    Efficiently clone groups, preserving production line constraints.
+    Keep the same component references for performance.
     """
+    if not groups:
+        return []
+    
     cloned_groups = []
     for group in groups:
         new_group = Group(group.id)
-        for component in group.components:
-            new_group.add_component(component)  # use the same reference
+        new_group.production_line_id = group.production_line_id  # Preserve production line ID
+        # Use list comprehension for better performance
+        new_group.components = list(group.components)
         cloned_groups.append(new_group)
     return cloned_groups
 
 def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon, 
                 max_iterations=100, non_improving_iterations=20,
                 destroy_operators=None, repair_operators=None,
-                sigma1=33, sigma2=9, sigma3=13, rho=0.5,
+                sigma1=33, sigma2=9, sigma3=3, rho=0.5,
                 initial_temperature=100, cooling_rate=0.95):
     """
     Adaptive Large Neighborhood Search for the Group Maintenance Problem.
@@ -688,6 +793,28 @@ def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon,
     Returns:
         Best solution found during the search
     """
+    # Input validation
+    if not initial_solution:
+        raise ValueError("Initial solution cannot be empty")
+    
+    if max_iterations <= 0:
+        raise ValueError("max_iterations must be positive")
+    
+    if non_improving_iterations <= 0:
+        raise ValueError("non_improving_iterations must be positive")
+    
+    if not (0 < rho <= 1):
+        raise ValueError("rho must be between 0 and 1")
+    
+    if initial_temperature <= 0:
+        raise ValueError("initial_temperature must be positive")
+    
+    if not (0 < cooling_rate < 1):
+        raise ValueError("cooling_rate must be between 0 and 1")
+    
+    if planning_horizon <= 0:
+        raise ValueError("planning_horizon must be positive")
+    
     # Set up destroy and repair operators if not provided
     if destroy_operators is None:
         destroy_operators = [
@@ -706,11 +833,14 @@ def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon,
         ]
     
     # Initialize solutions and costs
-    current_solution = clone_groups(initial_solution)
-    current_cost = compute_grouping_structure_cost(current_solution, get_production_line_by_id, planning_horizon)
-    
-    best_solution = clone_groups(current_solution)
-    best_cost = current_cost
+    try:
+        current_solution = clone_groups(initial_solution)
+        current_cost = compute_grouping_structure_cost(current_solution, get_production_line_by_id, planning_horizon)
+        
+        best_solution = clone_groups(current_solution)
+        best_cost = current_cost
+    except Exception as e:
+        raise ValueError(f"Failed to evaluate initial solution: {str(e)}")
     
     # Simulated annealing parameters
     temperature = initial_temperature
@@ -719,14 +849,14 @@ def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon,
     non_improving_count = 0
     
     print(f"Initial cost: {current_cost:.2f}")
+    print(f"{'Iter':<6} {'Best Cost':<12} {'Current Cost':<15} {'Destroy Op':<20} {'Repair Op':<20}")
+    print("-" * 73)
     
     # Main ALNS loop
     for iteration in range(max_iterations):
         if non_improving_count >= non_improving_iterations:
             print(f"Stopping: {non_improving_count} iterations without improvement")
             break
-            
-        print(f"Iteration {iteration + 1}/{max_iterations}")
         
         # Select destroy operator based on weights
         destroy_weights = [op.weight for op in destroy_operators]
@@ -750,6 +880,9 @@ def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon,
         # Evaluate new solution
         new_cost = compute_grouping_structure_cost(new_solution, get_production_line_by_id, planning_horizon)
         
+        # Print iteration information
+        print(f"{iteration + 1:<6} {best_cost:<12.2f} {new_cost:<15.2f} {destroy_op.name:<20} {repair_op.name:<20}")
+        
         # Update operator counts
         destroy_op.num_calls += 1
         repair_op.num_calls += 1
@@ -765,25 +898,22 @@ def alns_scheme(initial_solution, get_production_line_by_id, planning_horizon,
             score = sigma1
             accept = True
             non_improving_count = 0
-            print(f"  New best solution found: {best_cost:.2f} (Improved by: {current_cost - best_cost:.2f})")
         
         # Better than current
         elif new_cost < current_cost:
             score = sigma2
             accept = True
             non_improving_count = 0
-            print(f"  Better solution found: {new_cost:.2f} (Improved by: {current_cost - new_cost:.2f})")
         
         # Worse than current - accept based on simulated annealing
         else:
             # Simulate annealing acceptance probability
             delta = new_cost - current_cost
-            if temperature > 0:
+            if temperature > 1e-10:  # Avoid division by zero
                 p = math.exp(-delta / temperature)
                 if random.random() < p:
                     accept = True
                     score = sigma3
-                    print(f"  Accepting worse solution: {new_cost:.2f} (Worsened by: {new_cost - current_cost:.2f})")
             non_improving_count += 1
         
         # Update solution if accepted

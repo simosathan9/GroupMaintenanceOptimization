@@ -8,7 +8,7 @@ import numpy as np
 
 # Import from reorganized modules
 from cost_functions import compute_optimal_x
-from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty
+from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty, plot_component_planning_horizon
 # Import group_analysis functions to avoid circular import
 from group_analysis import (
     compute_group_economic_profit, 
@@ -16,8 +16,12 @@ from group_analysis import (
     find_feasible_interval,
     compute_grouping_structure_cost,
 )
-# Import metaheuristic algorithms
+from group import group_components_by_line
 from constructive_heuristic import best_fit_bin_packing
+from grasp_constructive import grasp_constructive_heuristic
+# Import metaheuristic approaches
+from local_search import local_search_scheme
+from alns import alns_scheme
 # Import moved to avoid circular import
 reader = InstanceReader("datasets/testing_dataset.csv")
 # for each row in the data, create a component object and add it to the components list
@@ -66,187 +70,155 @@ for component in components:
     component.optimal_execution_time = x_opt
     component.long_term_cost_rate = cr_opt
     component.feasible_interval = find_feasible_interval(component, get_production_line_by_id)
-
+    """
     print(f"Component {component.id}:")
     print(f"  Optimal x*: {x_opt:.2f}")
     print(f"  Feasible interval: {component.feasible_interval[0]:.2f} - {component.feasible_interval[1]:.2f}")
     print(f"  Cost Rate (CR): {cr_opt:.4f}")
     print()
-    
-# print correctly the optimal execution times range min and max
-min_optimal_execution_time = 1000
-max_optimal_execution_time = 0
-for component in components:
-    if component.optimal_execution_time < min_optimal_execution_time:
-        min_optimal_execution_time = component.optimal_execution_time
-    if component.optimal_execution_time > max_optimal_execution_time:
-        max_optimal_execution_time = component.optimal_execution_time
-print(f"Minimum optimal execution time: {min_optimal_execution_time:.2f}")
-print(f"Maximum optimal execution time: {max_optimal_execution_time:.2f}")
+    """
+  
+#plot_component_planning_horizon(components, get_production_line_by_id)
+global_best_solution = None
+global_best_cost = float('inf')
 
-#--------------------------------------------------------------------------------------------
-#------------------------------------------------------------------------------------------------
-#------------------------------------------------------------------------------------------------
-# Now let's use the best-fit bin packing algorithm to create groups
-print("\n=== Best-Fit Bin Packing Solution (Minimizing Grouping Structure Cost) ===")
+for i in range(3):
+    print("\n=== Best-Fit Bin Packing Solution (Minimizing Grouping Structure Cost) ===")
 
-# Define planning horizon (1 year)
-planning_horizon = 365
+    # Define planning horizon (1 year)
+    planning_horizon = 365
 
-# Get the individual component costs for comparison
-individual_components_groups = []
-for i, component in enumerate(components):
-    group = Group(i+1)
-    group.add_component(component)
-    individual_components_groups.append(group)
+    # Construct initial solution using GRASP
+    grouping_structure = grasp_constructive_heuristic(components, get_production_line_by_id, planning_horizon)
 
-individual_cost = compute_grouping_structure_cost(individual_components_groups, get_production_line_by_id, planning_horizon)
-print(f"Initial cost with no grouping: {individual_cost:.2f}")
+    # Evaluate initial cost
+    grouping_structure_cost = compute_grouping_structure_cost(grouping_structure, get_production_line_by_id, planning_horizon)
+    print(f"\nInitial grouping structure cost: {grouping_structure_cost:.2f}")
 
-# Run the bin packing algorithm
-bin_packing_groups = best_fit_bin_packing(components, get_production_line_by_id, planning_horizon)
+    metaheuristic_approach = "alns"  # Options: "local_search", "alns", "both"
 
-# Calculate the final grouped structure cost
-final_cost = compute_grouping_structure_cost(bin_packing_groups, get_production_line_by_id, planning_horizon)
-print(f"Final cost after grouping: {final_cost:.2f}")
-print(f"Cost reduction: {individual_cost - final_cost:.2f} ({((individual_cost - final_cost) / individual_cost * 100):.2f}%)")
-"""
-# Print the bin packing solution statistics
-print(f"\nTotal number of groups created: {len(bin_packing_groups)}")
-multi_component_groups = [g for g in bin_packing_groups if len(g.components) > 1]
-print(f"Number of multi-component groups: {len(multi_component_groups)}")
+    # Initialize current best for this iteration
+    best_solution = grouping_structure
+    best_cost = grouping_structure_cost
 
-# Calculate the total economic profit
-total_economic_profit = 0
-for group in bin_packing_groups:
-    if len(group.components) > 1:
+    # Run Local Search
+    if metaheuristic_approach in {"local_search", "both"}:
+        print("\n=== Running Enhanced Local Search ===")
+        local_search_solution = local_search_scheme(
+            grouping_structure,
+            get_production_line_by_id,
+            planning_horizon,
+            max_iterations=20
+        )
+        local_search_cost = compute_grouping_structure_cost(local_search_solution, get_production_line_by_id, planning_horizon)
+        print(f"\nFinal solution cost after local search: {local_search_cost:.2f}")
+        print(f"Improvement over heuristic: {grouping_structure_cost - local_search_cost:.2f} "
+              f"({((grouping_structure_cost - local_search_cost) / grouping_structure_cost * 100):.2f}%)")
+
+        if local_search_cost < best_cost:
+            best_cost = local_search_cost
+            best_solution = local_search_solution
+
+    # Run ALNS
+    if metaheuristic_approach in {"alns", "both"}:
+        print("\n=== Running Adaptive Large Neighborhood Search ===")
+        alns_solution = alns_scheme(
+            grouping_structure,
+            get_production_line_by_id,
+            planning_horizon,
+            max_iterations=2000,
+            non_improving_iterations=100,
+            initial_temperature=100,
+            cooling_rate=0.999999999
+        )
+        alns_cost = compute_grouping_structure_cost(alns_solution, get_production_line_by_id, planning_horizon)
+        print(f"\nFinal solution cost after ALNS: {alns_cost:.2f}")
+        print(f"Improvement over heuristic: {grouping_structure_cost - alns_cost:.2f} "
+              f"({((grouping_structure_cost - alns_cost) / grouping_structure_cost * 100):.2f}%)")
+
+        if alns_cost < best_cost:
+            best_cost = alns_cost
+            best_solution = alns_solution
+
+    # Log which metaheuristic was better if both were run
+    if metaheuristic_approach == "both":
+        if best_solution == alns_solution:
+            print(f"\nALNS outperformed Local Search by {local_search_cost - alns_cost:.2f} "
+                  f"({((local_search_cost - alns_cost) / local_search_cost * 100):.2f}%)")
+        else:
+            print(f"\nLocal Search outperformed ALNS by {alns_cost - local_search_cost:.2f} "
+                  f"({((alns_cost - local_search_cost) / alns_cost * 100):.2f}%)")
+
+    # Update global best
+    if best_cost < global_best_cost:
+        global_best_cost = best_cost
+        global_best_solution = best_solution
+
+    # Apply cascading delays manually to show the process
+    groups_by_line = group_components_by_line(global_best_solution)
+    print(f"\n=== Applying Cascading Delays by Production Line (for scheduling only) ===")
+
+    for line_id, line_groups in groups_by_line.items():
+        print(f"\nProduction Line {int(line_id)}:")
+        # Sort groups by planned execution time
+        sorted_groups = sorted(line_groups, key=lambda g: g.planned_execution_time)
+        
+        cumulative_delay = 0
+        for i, group in enumerate(sorted_groups):
+            if len(group.components) > 1:  # Only show multi-component groups
+                old_time = group.planned_execution_time
+                group.effective_execution_time = group.planned_execution_time + cumulative_delay
+                downtime = group.get_group_downtime()
+                
+                print(f"  Group {group.id}: {old_time:.2f} → {group.effective_execution_time:.2f} (delay: +{cumulative_delay:.2f})")
+                print(f"    Downtime added: {downtime:.2f}")
+                
+                # Add this group's downtime to cumulative delay for subsequent groups
+                cumulative_delay += downtime
+                
+    print(f"\n=== Detailed Component Analysis After Cascading Effects ===")
+    for line_id, line_groups in groups_by_line.items():
+        for group in line_groups:
+                if len(group.components) > 1:  # Only show multi-component groups
+                    effective_time = group.effective_execution_time if hasattr(group, 'effective_execution_time') else group.planned_execution_time
+                    optimal_time = group.planned_execution_time
+                    
+                    print(f"\nGroup {group.id}:")
+                    print(f"  Components: {[int(c.id) for c in group.components]}")
+                    print(f"  Component normal times: {[f'{c.optimal_execution_time:.2f}' for c in group.components]}")
+                    print(f"  Optimal group time: {optimal_time:.2f}")
+                    print(f"  Final execution time (after cascading): {effective_time:.2f}")
+                    
+                    # Show individual component deviations
+                    for component in group.components:
+                        normal_time = component.optimal_execution_time
+                        deviation_from_normal = effective_time - normal_time
+                        interval = component.feasible_interval
+                        print(f"    Component {int(component.id)}: {normal_time:.2f} → {effective_time:.2f} (deviation: {deviation_from_normal:+.2f}), Feasible interval: ({interval[0]:.2f}, {interval[1]:.2f})")
+                    
+                    downtime = group.get_group_downtime()
+                    print(f"  Group downtime: {downtime:.2f}")
+                    
+                    # Calculate economic profit using the OPTIMAL time (not effective time)
+                    # because downtime doesn't change the economic calculations
+                    _, profit_details = compute_group_economic_profit(group, optimal_time, get_production_line_by_id)
+                    print(f"  Components of economic profit: {profit_details.get('setup_savings', 0):.2f} (setup savings), {profit_details.get('downtime_savings', 0):.2f} (downtime savings), {profit_details.get('increased_CM_cost', 0):.2f} (increased CM cost)")
+                    print(f"  Group economic profit: {_:.2f}")
+
+# Final output of the best solution found
+print("\n=== Best Solution Found ===")
+print(f"Total cost: {global_best_cost:.2f}")
+print(f"Total cost reduction from initial bin packing: {grouping_structure_cost - global_best_cost:.2f} ({((grouping_structure_cost - global_best_cost) / grouping_structure_cost * 100):.2f}%)")
+print(f"Number of groups: {len(global_best_solution)}")
+
+print(f"\n=== Final Schedule with Cascading Effects (for implementation) ===")
+for group in global_best_solution:
+    if len(group.components) > 1:  # Only show multi-component groups
         group_time = find_optimal_group_time(group)[0]
-        profit, _ = compute_group_economic_profit(group, group_time, get_production_line_by_id)
-        total_economic_profit += profit
-
-print(f"Total economic profit from grouping: {total_economic_profit:.2f}")
-
-# Show details of multi-component groups
-print("\nMulti-component groups details:")
-for group in sorted(multi_component_groups, key=lambda g: len(g.components), reverse=True):
-    group_time = find_optimal_group_time(group)[0]
-    profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
-    
-    print(f"\nGroup {group.id} - Components: {len(group.components)}, Execution time: {group_time:.2f}, Profit: {profit:.2f}")
-    print(f"  Setup savings: {details['setup_savings']:.2f}")
-    print(f"  Downtime savings: {details['downtime_savings']:.2f}")
-    print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
-    print(f"  Components: {[int(c.id) for c in group.components]}")
-    #print(f"  Production lines: {sorted(set(c.production_line_id for c in group.components))}") production line id in numpy format
-    # print production line ids as int and not numpy format
-    print(f"  Production lines: {[int(c.production_line_id) for c in group.components]}")
-    
-    # Show feasible interval verification for the first few components (limited to avoid excessive output)
-    if len(group.components) <= 5:  # Only show details for small groups
-        print("  Feasible intervals:")
-        for component in group.components:
-            interval = find_feasible_interval(component, get_production_line_by_id)
-            if interval:
-                print(f"    Component {int(component.id)}: ({interval[0]:.2f}, {interval[1]:.2f}), Optimal: {component.optimal_execution_time:.2f}")
-            else:
-                print(f"    Component {int(component.id)}: No feasible interval found.")
-            # Plot the group economic profit analysis
-        #plot_group_economic_profit(group, get_production_line_by_id, find_optimal_group_time)
-
-# Plot the feasible interval penalty function
-#plot_feasible_interval_penalty(components[5], get_production_line_by_id)
-#
-from local_search import local_search_scheme
-
-# Calculate and print the cost of the initial solution from bin packing
-initial_bin_packing_cost = compute_grouping_structure_cost(bin_packing_groups, get_production_line_by_id, planning_horizon)
-print(f"\nInitial bin packing solution cost: {initial_bin_packing_cost:.2f}")
-
-# Import metaheuristic approaches
-from local_search import local_search_scheme
-from alns import alns_scheme
-
-# Choose which metaheuristic to run
-metaheuristic_approach = "alns"  # Options: "local_search", "alns", "both"
-
-if metaheuristic_approach == "local_search" or metaheuristic_approach == "both":
-    # Run the enhanced local search
-    print("\n=== Running Enhanced Local Search ===")
-    local_search_solution = local_search_scheme(
-        bin_packing_groups, 
-        get_production_line_by_id, 
-        planning_horizon,
-        max_iterations=20
-    )
-    
-    # Calculate and print the cost of the local search solution
-    local_search_cost = compute_grouping_structure_cost(local_search_solution, get_production_line_by_id, planning_horizon)
-    print(f"\nFinal solution cost after local search: {local_search_cost:.2f}")
-    print(f"Improvement over bin packing: {initial_bin_packing_cost - local_search_cost:.2f} ({((initial_bin_packing_cost - local_search_cost) / initial_bin_packing_cost * 100):.2f}%)")
-    print(f"Total improvement over individual components: {individual_cost - local_search_cost:.2f} ({((individual_cost - local_search_cost) / individual_cost * 100):.2f}%)")
-    
-    # Set the final solution to be the local search solution
-    if metaheuristic_approach == "local_search":
-        solution = local_search_solution
-        final_cost = local_search_cost
-
-if metaheuristic_approach == "alns" or metaheuristic_approach == "both":
-    # Run the Adaptive Large Neighborhood Search
-    print("\n=== Running Adaptive Large Neighborhood Search ===")
-    alns_solution = alns_scheme(
-        bin_packing_groups,
-        get_production_line_by_id,
-        planning_horizon,
-        max_iterations=100,
-        non_improving_iterations=20,
-        initial_temperature=100,
-        cooling_rate=0.95
-    )
-    
-    # Calculate and print the cost of the ALNS solution
-    alns_cost = compute_grouping_structure_cost(alns_solution, get_production_line_by_id, planning_horizon)
-    print(f"\nFinal solution cost after ALNS: {alns_cost:.2f}")
-    print(f"Improvement over bin packing: {initial_bin_packing_cost - alns_cost:.2f} ({((initial_bin_packing_cost - alns_cost) / initial_bin_packing_cost * 100):.2f}%)")
-    print(f"Total improvement over individual components: {individual_cost - alns_cost:.2f} ({((individual_cost - alns_cost) / individual_cost * 100):.2f}%)")
-    
-    # Set the final solution to be the ALNS solution
-    if metaheuristic_approach == "alns":
-        solution = alns_solution
-        final_cost = alns_cost
-
-if metaheuristic_approach == "both":
-    # Compare the two approaches and choose the best
-    if alns_cost < local_search_cost:
-        solution = alns_solution
-        final_cost = alns_cost
-        print(f"\nALNS outperformed Local Search by {local_search_cost - alns_cost:.2f} ({((local_search_cost - alns_cost) / local_search_cost * 100):.2f}%)")
-    else:
-        solution = local_search_solution
-        final_cost = local_search_cost
-        print(f"\nLocal Search outperformed ALNS by {alns_cost - local_search_cost:.2f} ({((alns_cost - local_search_cost) / alns_cost * 100):.2f}%)")
-
-# Print the final solution
-print("\n=== Final Solution After Metaheuristic ===")
-for group in solution:
-    group_time = find_optimal_group_time(group)[0]
-    profit, details = compute_group_economic_profit(group, group_time, get_production_line_by_id)
-    
-    print(f"\nGroup {group.id} - Components: {len(group.components)}, Execution time: {group_time:.2f}, Profit: {profit:.2f}")
-    print(f"  Setup savings: {details['setup_savings']:.2f}")
-    print(f"  Downtime savings: {details['downtime_savings']:.2f}")
-    print(f"  Increased CM cost: {details['increased_CM_cost']:.2f}")
-    print(f"  Components: {[int(c.id) for c in group.components]}")
-    #print(f"  Production lines: {sorted(set(c.production_line_id for c in group.components))}") production line id in numpy format
-    # print production line ids as int and not numpy format
-    print(f"  Production lines: {[int(c.production_line_id) for c in group.components]}")
-    
-    # Show feasible interval verification for the first few components (limited to avoid excessive output)
-    if len(group.components) <= 5:  # Only show details for small groups
-        print("  Feasible intervals:")
-        for component in group.components:
-            interval = find_feasible_interval(component, get_production_line_by_id)
-            if interval:
-                print(f"    Component {int(component.id)}: ({interval[0]:.2f}, {interval[1]:.2f}), Optimal: {component.optimal_execution_time:.2f}")
-            else:
-                print(f"    Component {int(component.id)}: No feasible interval found.")
-"""
+        effective_time = getattr(group, 'effective_execution_time', group_time)
+        print(f"Group {group.id}:")
+        print(f"  Optimal execution time: {group_time:.2f}")
+        print(f"  Scheduled execution time: {effective_time:.2f}")
+        print(f"  Components: {[int(c.id) for c in group.components]}")
+        print(f"  Production lines: {[int(c.production_line_id) for c in group.components]}")
+        print(f"  Downtime duration: {group.get_group_downtime():.2f}")
