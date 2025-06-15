@@ -8,7 +8,7 @@ import numpy as np
 
 # Import from reorganized modules
 from cost_functions import compute_optimal_x
-from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty, plot_component_planning_horizon
+from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty, plot_component_planning_horizon, plot_cascading_effects_comparison
 # Import group_analysis functions to avoid circular import
 from group_analysis import (
     compute_group_economic_profit, 
@@ -82,7 +82,7 @@ for component in components:
 global_best_solution = None
 global_best_cost = float('inf')
 
-for i in range(3):
+for i in range(1):
     print("\n=== Best-Fit Bin Packing Solution (Minimizing Grouping Structure Cost) ===")
 
     # Define planning horizon (1 year)
@@ -126,7 +126,7 @@ for i in range(3):
             grouping_structure,
             get_production_line_by_id,
             planning_horizon,
-            max_iterations=2000,
+            max_iterations=500,
             non_improving_iterations=100,
             initial_temperature=100,
             cooling_rate=0.999999999
@@ -154,56 +154,59 @@ for i in range(3):
         global_best_cost = best_cost
         global_best_solution = best_solution
 
-    # Apply cascading delays manually to show the process
-    groups_by_line = group_components_by_line(global_best_solution)
-    print(f"\n=== Applying Cascading Delays by Production Line (for scheduling only) ===")
+# Apply cascading delays manually to show the process
+groups_by_line = group_components_by_line(global_best_solution)
+print(f"\n=== Applying Cascading Delays by Production Line (for scheduling only) ===")
 
-    for line_id, line_groups in groups_by_line.items():
-        print(f"\nProduction Line {int(line_id)}:")
-        # Sort groups by planned execution time
-        sorted_groups = sorted(line_groups, key=lambda g: g.planned_execution_time)
-        
-        cumulative_delay = 0
-        for i, group in enumerate(sorted_groups):
+for line_id, line_groups in groups_by_line.items():
+    print(f"\nProduction Line {int(line_id)}:")
+    # Sort groups by planned execution time
+    sorted_groups = sorted(line_groups, key=lambda g: g.planned_execution_time)
+    
+    cumulative_delay = 0
+    for i, group in enumerate(sorted_groups):
+        if len(group.components) > 1:  # Only show multi-component groups
+            old_time = group.planned_execution_time
+            group.effective_execution_time = group.planned_execution_time + cumulative_delay
+            downtime = group.get_group_downtime()
+            
+            print(f"  Group {group.id}: {old_time:.2f} → {group.effective_execution_time:.2f} (delay: +{cumulative_delay:.2f})")
+            print(f"    Downtime added: {downtime:.2f}")
+            
+            # Add this group's downtime to cumulative delay for subsequent groups
+            cumulative_delay += downtime
+
+# Visualize the cascading effects comparison
+plot_cascading_effects_comparison(groups_by_line)
+            
+print(f"\n=== Detailed Component Analysis After Cascading Effects ===")
+for line_id, line_groups in groups_by_line.items():
+    for group in line_groups:
             if len(group.components) > 1:  # Only show multi-component groups
-                old_time = group.planned_execution_time
-                group.effective_execution_time = group.planned_execution_time + cumulative_delay
+                effective_time = group.effective_execution_time if hasattr(group, 'effective_execution_time') else group.planned_execution_time
+                optimal_time = group.planned_execution_time
+                
+                print(f"\nGroup {group.id}:")
+                print(f"  Components: {[int(c.id) for c in group.components]}")
+                print(f"  Component normal times: {[f'{c.optimal_execution_time:.2f}' for c in group.components]}")
+                print(f"  Optimal group time: {optimal_time:.2f}")
+                print(f"  Final execution time (after cascading): {effective_time:.2f}")
+                
+                # Show individual component deviations
+                for component in group.components:
+                    normal_time = component.optimal_execution_time
+                    deviation_from_normal = effective_time - normal_time
+                    interval = component.feasible_interval
+                    print(f"    Component {int(component.id)}: {normal_time:.2f} → {effective_time:.2f} (deviation: {deviation_from_normal:+.2f}), Feasible interval: ({interval[0]:.2f}, {interval[1]:.2f})")
+                
                 downtime = group.get_group_downtime()
+                print(f"  Group downtime: {downtime:.2f}")
                 
-                print(f"  Group {group.id}: {old_time:.2f} → {group.effective_execution_time:.2f} (delay: +{cumulative_delay:.2f})")
-                print(f"    Downtime added: {downtime:.2f}")
-                
-                # Add this group's downtime to cumulative delay for subsequent groups
-                cumulative_delay += downtime
-                
-    print(f"\n=== Detailed Component Analysis After Cascading Effects ===")
-    for line_id, line_groups in groups_by_line.items():
-        for group in line_groups:
-                if len(group.components) > 1:  # Only show multi-component groups
-                    effective_time = group.effective_execution_time if hasattr(group, 'effective_execution_time') else group.planned_execution_time
-                    optimal_time = group.planned_execution_time
-                    
-                    print(f"\nGroup {group.id}:")
-                    print(f"  Components: {[int(c.id) for c in group.components]}")
-                    print(f"  Component normal times: {[f'{c.optimal_execution_time:.2f}' for c in group.components]}")
-                    print(f"  Optimal group time: {optimal_time:.2f}")
-                    print(f"  Final execution time (after cascading): {effective_time:.2f}")
-                    
-                    # Show individual component deviations
-                    for component in group.components:
-                        normal_time = component.optimal_execution_time
-                        deviation_from_normal = effective_time - normal_time
-                        interval = component.feasible_interval
-                        print(f"    Component {int(component.id)}: {normal_time:.2f} → {effective_time:.2f} (deviation: {deviation_from_normal:+.2f}), Feasible interval: ({interval[0]:.2f}, {interval[1]:.2f})")
-                    
-                    downtime = group.get_group_downtime()
-                    print(f"  Group downtime: {downtime:.2f}")
-                    
-                    # Calculate economic profit using the OPTIMAL time (not effective time)
-                    # because downtime doesn't change the economic calculations
-                    _, profit_details = compute_group_economic_profit(group, optimal_time, get_production_line_by_id)
-                    print(f"  Components of economic profit: {profit_details.get('setup_savings', 0):.2f} (setup savings), {profit_details.get('downtime_savings', 0):.2f} (downtime savings), {profit_details.get('increased_CM_cost', 0):.2f} (increased CM cost)")
-                    print(f"  Group economic profit: {_:.2f}")
+                # Calculate economic profit using the OPTIMAL time (not effective time)
+                # because downtime doesn't change the economic calculations
+                _, profit_details = compute_group_economic_profit(group, optimal_time, get_production_line_by_id)
+                print(f"  Components of economic profit: {profit_details.get('setup_savings', 0):.2f} (setup savings), {profit_details.get('downtime_savings', 0):.2f} (downtime savings), {profit_details.get('increased_CM_cost', 0):.2f} (increased CM cost)")
+                print(f"  Group economic profit: {_:.2f}")
 
 # Final output of the best solution found
 print("\n=== Best Solution Found ===")

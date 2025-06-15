@@ -375,3 +375,123 @@ def plot_component_planning_horizon(components, get_production_line_by_id, plann
     file_id = random.randint(0, 100000)
     plt.savefig(f'component_planning_horizon_{file_id}.png', dpi=300, bbox_inches='tight')
     plt.show()
+
+def plot_cascading_effects_comparison(groups_by_line):
+    """
+    Visualizes the before/after comparison of group execution times for each production line.
+    Shows planned execution times vs effective execution times after cascading delays as timeline.
+    
+    Args:
+        groups_by_line: Dictionary with line_id as key and list of groups as value
+    """
+    num_lines = len(groups_by_line)
+    if num_lines == 0:
+        print("No groups to visualize")
+        return
+        
+    fig, axes = plt.subplots(num_lines * 2, 1, figsize=(16, 3 * num_lines * 2))
+    if num_lines == 1:
+        axes = [axes] if len(axes.shape) == 1 else axes.flatten()
+    else:
+        axes = axes.flatten()
+    
+    colors = ['#2E86C1', '#E74C3C']  # Blue for planned, Red for effective
+    
+    for idx, (line_id, line_groups) in enumerate(groups_by_line.items()):
+        # Filter groups with multiple components
+        multi_component_groups = [g for g in line_groups if len(g.components) > 1]
+        
+        if not multi_component_groups:
+            for i in range(2):
+                ax = axes[idx * 2 + i]
+                ax.text(0.5, 0.5, f'Production Line {int(line_id)}\nNo multi-component groups', 
+                       ha='center', va='center', transform=ax.transAxes, fontsize=12)
+                ax.set_xlim(0, 365)
+                ax.set_ylim(-0.5, 0.5)
+            continue
+            
+        # Sort groups by planned execution time
+        sorted_groups = sorted(multi_component_groups, key=lambda g: g.planned_execution_time)
+        
+        planned_times = [g.planned_execution_time for g in sorted_groups]
+        effective_times = [getattr(g, 'effective_execution_time', g.planned_execution_time) for g in sorted_groups]
+        
+        # Create timeline plots
+        for timeline_idx, (times, title_suffix, color) in enumerate([
+            (planned_times, "Original Planning", colors[0]),
+            (effective_times, "After Cascading Effects", colors[1])
+        ]):
+            ax = axes[idx * 2 + timeline_idx]
+            
+            # Plot timeline as horizontal line
+            max_time = max(max(planned_times), max(effective_times))
+            ax.plot([0, max_time], [0, 0], 'k-', linewidth=2, alpha=0.3)
+            
+            # Plot groups as points on timeline
+            for i, (group, time) in enumerate(zip(sorted_groups, times)):
+                # Main group point
+                ax.plot(time, 0, 'o', color=color, markersize=12, alpha=0.8)
+                
+                # Group label
+                components_str = ','.join([str(int(c.id)) for c in group.components])
+                downtime = group.get_group_downtime()
+                label = f'G{group.id}\n[{components_str}]\nDT:{downtime:.1f}d'
+                
+                # Alternate label positions above/below
+                y_offset = 0.15 if i % 2 == 0 else -0.15
+                ax.text(time, y_offset, label, ha='center', va='center' if i % 2 == 0 else 'top', 
+                       fontsize=8, bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
+                
+                # Time annotation
+                ax.text(time, -0.08 if i % 2 == 0 else 0.08, f'{time:.1f}d', 
+                       ha='center', va='top' if i % 2 == 0 else 'bottom', 
+                       fontsize=9, fontweight='bold', color=color)
+            
+            # Calculate and show gaps between consecutive groups
+            if len(times) > 1:
+                for i in range(len(times) - 1):
+                    gap = times[i + 1] - times[i]
+                    mid_point = (times[i] + times[i + 1]) / 2
+                    ax.annotate('', xy=(times[i + 1], -0.05), xytext=(times[i], -0.05),
+                               arrowprops=dict(arrowstyle='<->', color='gray', lw=1))
+                    ax.text(mid_point, -0.05, f'{gap:.1f}d', ha='center', va='top', 
+                           fontsize=8, color='gray', style='italic')
+            
+            ax.set_xlim(-10, max_time + 10)
+            ax.set_ylim(-0.4, 0.4)
+            ax.set_xlabel('Time (days)', fontsize=11)
+            ax.set_title(f'Production Line {int(line_id)} - {title_suffix}', 
+                        fontsize=12, fontweight='bold')
+            ax.grid(True, axis='x', alpha=0.3)
+            ax.set_yticks([])
+            
+            # Add timeline markers
+            for i in range(0, int(max_time) + 50, 50):
+                if i <= max_time:
+                    ax.axvline(x=i, color='lightgray', linestyle=':', alpha=0.5)
+                    ax.text(i, 0.35, f'{i}d', ha='center', va='bottom', fontsize=8, color='gray')
+        
+        # Add comparison summary between the two timelines
+        if len(sorted_groups) > 1:
+            total_delay = sum(effective_times) - sum(planned_times)
+            original_span = max(planned_times) - min(planned_times)
+            new_span = max(effective_times) - min(effective_times)
+            span_change = new_span - original_span
+            
+            summary_text = (f'Total delay: {total_delay:.1f}d | '
+                           f'Original span: {original_span:.1f}d | '
+                           f'New span: {new_span:.1f}d | '
+                           f'Span change: {span_change:+.1f}d')
+            
+            # Place summary between the two timelines
+            fig.text(0.5, (2 * idx + 1.5) / (num_lines * 2), summary_text,
+                    ha='center', va='center', fontsize=10, 
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor='lightyellow', alpha=0.9))
+    
+    plt.tight_layout()
+    
+    # Save the figure
+    random.seed(42)
+    file_id = random.randint(0, 100000)
+    plt.savefig(f'cascading_effects_timeline_{file_id}.png', dpi=300, bbox_inches='tight')
+    plt.show()
