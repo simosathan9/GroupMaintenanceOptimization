@@ -492,6 +492,6 @@ def plot_cascading_effects_comparison(groups_by_line):
     
     # Save the figure
     random.seed(42)
-    file_id = random.randint(0, 100000)
-    plt.savefig(f'cascading_effects_timeline_{file_id}.png', dpi=300, bbox_inches='tight')
+    #file_id = random.randint(0, 100000)
+    plt.savefig(f'visualizations/cascading_effects_timeline.png', dpi=300, bbox_inches='tight')
     plt.show()

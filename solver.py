@@ -5,11 +5,8 @@ from production_line import ProductionLine
 from solution import Solution
 from group import Group
 import numpy as np
-
-# Import from reorganized modules
 from cost_functions import compute_optimal_x
 from visualizations import plot_group_economic_profit, plot_feasible_interval_penalty, plot_component_planning_horizon, plot_cascading_effects_comparison
-# Import group_analysis functions to avoid circular import
 from group_analysis import (
     compute_group_economic_profit, 
     find_optimal_group_time,
@@ -22,9 +19,8 @@ from grasp_constructive import grasp_constructive_heuristic
 # Import metaheuristic approaches
 from local_search import local_search_scheme
 from alns import alns_scheme
-# Import moved to avoid circular import
+
 reader = InstanceReader("datasets/testing_dataset.csv")
-# for each row in the data, create a component object and add it to the components list
 components = []
 production_lines = []
 solution = Solution()
@@ -53,7 +49,6 @@ def get_production_line_by_id(id):
             return production_line
     return None
 
-# In the same way we will calculate the downtime cost reduction as each production line is accompanied with its downtime cost rate
 maintenance_durations = data['Duration'].tolist()
 for index, row in data.iterrows():
     component = Component(row['ID'], row['Duration'], row['Corrective_Specific_Cost'], row['Preventive_Specific_Cost'], get_production_line_by_id(row['Production Line']), row['Weibull_Parameter'], row['MTBF'])
@@ -70,13 +65,6 @@ for component in components:
     component.optimal_execution_time = x_opt
     component.long_term_cost_rate = cr_opt
     component.feasible_interval = find_feasible_interval(component, get_production_line_by_id)
-    """
-    print(f"Component {component.id}:")
-    print(f"  Optimal x*: {x_opt:.2f}")
-    print(f"  Feasible interval: {component.feasible_interval[0]:.2f} - {component.feasible_interval[1]:.2f}")
-    print(f"  Cost Rate (CR): {cr_opt:.4f}")
-    print()
-    """
   
 #plot_component_planning_horizon(components, get_production_line_by_id)
 global_best_solution = None
